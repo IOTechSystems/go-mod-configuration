@@ -5,18 +5,6 @@
 
 package corekeeper
 
-import "regexp"
-
-// new constants relates to EdgeX Keeper service and will be added to go-mod-core-contracts in the future
-const CoreKeeperServiceKey = "core-keeper"
-
-// KeyAllowedCharsRegexString defined the characters allowed in the key name
-const KeyAllowedCharsRegexString = "^[a-zA-Z0-9-_~;=./]+$"
-
-var (
-	KeyAllowedCharsRegex = regexp.MustCompile(KeyAllowedCharsRegexString)
-)
-
 // key delimiter for edgex keeper
 const KeyDelimiter = "/"
 
@@ -28,4 +16,5 @@ const ApiKVRoute = ApiBase + "/kv"
 const (
 	Flatten = "flatten"
 	Keys    = "keys"
+	Raw     = "raw"
 )

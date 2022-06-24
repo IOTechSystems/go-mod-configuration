@@ -98,24 +98,6 @@ func sendRequest(req *http.Request) ([]byte, error) {
 	return nil, errors.New(errResponse.Message)
 }
 
-func createRequestWithEncodedData(httpMethod string, baseUrl string, requestPath string, data []byte, encoding string) (*http.Request, error) {
-	u, err := url.Parse(baseUrl)
-	if err != nil {
-		return nil, fmt.Errorf("fail to parse baseUrl, err: %v", err)
-	}
-	u.Path = requestPath
-
-	content := encoding
-
-	req, err := http.NewRequest(httpMethod, u.String(), bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("fail to create a http request, err: %v", err)
-	}
-	req.Header.Set(ContentType, content)
-
-	return req, nil
-}
-
 func createRequestWithRawData(httpMethod string, baseUrl string, requestPath string, requestParams url.Values, data interface{}) (*http.Request, error) {
 	u, err := url.Parse(baseUrl)
 	if err != nil {

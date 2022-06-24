@@ -27,8 +27,11 @@ func (c *Client) KV() *KV {
 // Get is used to lookup a single key. The returned pointer
 // to the KVPair will be nil if the key does not exist.
 func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
+	pathParams := url.Values{}
+	pathParams.Add(Raw, "true")
+
 	url := fmt.Sprintf(ApiKVRoute+"/%s", key)
-	err = http.GetRequest(&res, k.c.baseUrl, url, nil)
+	err = http.GetRequest(&res, k.c.baseUrl, url, pathParams)
 	if err != nil {
 		return res, err
 	}
@@ -51,8 +54,12 @@ func (k *KV) Put(key string, data interface{}) (err error) {
 	keyPath := path.Join(ApiKVRoute, key)
 	urlParams := url.Values{}
 	urlParams.Add(Flatten, "true")
+	value := data
+	if byteArray, ok := value.([]byte); ok {
+		value = string(byteArray)
+	}
 	request := dtos.AddKeysRequest{
-		Value: data,
+		Value: value,
 	}
 	err = http.PutRequest(nil, k.c.baseUrl, keyPath, urlParams, request)
 	if err != nil {

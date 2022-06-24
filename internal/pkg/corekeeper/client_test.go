@@ -12,6 +12,8 @@ import (
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
+	"github.com/pelletier/go-toml"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,6 +113,86 @@ func TestHasSubConfigurationTrue(t *testing.T) {
 	assert.True(t, actual)
 }
 
+func createConfigMap() map[string]interface{} {
+	configMap := make(map[string]interface{})
+
+	configMap["int"] = 1
+	configMap["int64"] = int64(64)
+	configMap["float64"] = float64(1.4)
+	configMap["string"] = "hello"
+	configMap["bool"] = true
+	configMap["nestedNode"] = map[string]interface{}{"field1": "value1", "field2": "value2"}
+
+	return configMap
+}
+
+func TestPutConfigurationToml(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+	configMap := createConfigMap()
+
+	configToml, err := toml.TreeFromMap(configMap)
+	if err != nil {
+		t.Fatalf("unable to create TOML Tree from map: %v", err)
+	}
+
+	err = client.PutConfigurationToml(configToml, false)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+}
+
+func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
+	client := makeCoreKeeperClient("coreKeeperUnitTest321867000")
+	configMap := createConfigMap()
+	originConfig := configMap
+	// overwrite the configMap fields
+	configMap["nestedNode"] = map[string]interface{}{"field1": "xxx", "field2": "yyy"}
+	configToml, err := toml.TreeFromMap(configMap)
+	if err != nil {
+		t.Fatalf("unable to create TOML Tree from map: %v", err)
+	}
+
+	err = client.PutConfigurationToml(configToml, false)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	actual, err := client.GetConfigurationValue("nestedNode/field1")
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	expected := []byte(originConfig["nestedNode"].(map[string]interface{})["field1"].(string))
+	if !assert.Equal(t, expected, actual, "Values for %s are not equal, expected equal", "nestedNode/field1") {
+		t.Fatal()
+	}
+}
+
+func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
+	client := makeCoreKeeperClient("coreKeeperUnitTest321867000")
+	configMap := createConfigMap()
+	originConfig := configMap
+	// overwrite the configMap fields
+	configMap["nestedNode"] = map[string]interface{}{"field1": "value1", "field2": "value2"}
+	configToml, err := toml.TreeFromMap(configMap)
+	if err != nil {
+		t.Fatalf("unable to create TOML Tree from map: %v", err)
+	}
+
+	err = client.PutConfigurationToml(configToml, true)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	actual, err := client.GetConfigurationValue("nestedNode/field1")
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	expected := []byte(originConfig["nestedNode"].(map[string]interface{})["field1"].(string))
+	if !assert.NotEqual(t, expected, actual, "Values for %s are equal, expected not equal", "nestedNode/field1") {
+		t.Fatal()
+	}
+}
+
 func TestPutConfiguration(t *testing.T) {
 	expected := TestConfig{
 		Logging: LoggingInfo{
@@ -207,4 +289,50 @@ func TestGetConfiguration(t *testing.T) {
 	if !assert.NotNil(t, configuration) {
 		t.Fatal()
 	}
+}
+
+func TestGetConfigurationValue(t *testing.T) {
+	key := "Foo"
+	expected := []byte("bar")
+
+	uniqueServiceName := getUniqueServiceName()
+	client := makeCoreKeeperClient(uniqueServiceName)
+
+	err := client.PutConfigurationValue(key, expected)
+	assert.NoError(t, err)
+
+	actual, err := client.GetConfigurationValue(key)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	if !assert.Equal(t, expected, actual) {
+		t.Fatal()
+	}
+}
+
+func TestPutConfigurationValue(t *testing.T) {
+	key := "Foo"
+	expected := []byte("bar")
+
+	uniqueServiceName := getUniqueServiceName()
+
+	client := makeCoreKeeperClient(uniqueServiceName)
+
+	// Make sure the configuration doesn't already exists
+	// reset(t, client)
+
+	err := client.PutConfigurationValue(key, expected)
+	assert.NoError(t, err)
+
+	resp, err := client.keeperClient.KV().Get(client.fullPath(key))
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	if !assert.NotNil(t, resp, "%s value not found", key) {
+		t.Fatal()
+	}
+
+	actual := []byte(resp.KV[0].Value.(string))
+
+	assert.Equal(t, expected, actual)
 }

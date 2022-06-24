@@ -32,7 +32,6 @@ type coreKeeperClient struct {
 
 // NewCoreKeeperClient creates a new Core Keeper Client.
 func NewCoreKeeperClient(config types.ServiceConfig) *coreKeeperClient {
-
 	client := coreKeeperClient{
 		keeperUrl:      config.GetUrl(),
 		configBasePath: config.BasePath,
@@ -81,14 +80,37 @@ func (client *coreKeeperClient) HasSubConfiguration(name string) (bool, error) {
 	return true, nil
 }
 
+// PutConfigurationToml puts a full toml configuration into Core Keeper
 func (client *coreKeeperClient) PutConfigurationToml(configuration *toml.Tree, overwrite bool) error {
+	configurationMap := configuration.ToMap()
+	err := client.PutConfiguration(configurationMap, overwrite)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (client *coreKeeperClient) PutConfiguration(configStruct interface{}, overwrite bool) error {
-	err := client.keeperClient.KV().Put(client.configBasePath, configStruct)
+func (client *coreKeeperClient) PutConfiguration(config interface{}, overwrite bool) error {
+	var err error
+	if overwrite {
+		err = client.keeperClient.KV().Put(client.configBasePath, config)
+	} else {
+		kvPairs := convertMapToKVPairs("", config)
+		for _, kv := range kvPairs {
+			exists, err := client.ConfigurationValueExists(kv.Key)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				// Only create the key if not exists in core keeper
+				if err = client.PutConfigurationValue(kv.Key, []byte(kv.Value)); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
+		return fmt.Errorf("error occurred while creating/updating configuration, error: %v", err)
 	}
 	return nil
 }
@@ -179,11 +201,21 @@ func (client *coreKeeperClient) ConfigurationValueExists(name string) (bool, err
 }
 
 func (client *coreKeeperClient) GetConfigurationValue(name string) ([]byte, error) {
-	return []byte{}, nil
+	keyPath := client.fullPath(name)
+	resp, err := client.keeperClient.KV().Get(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.KV) == 0 {
+		return nil, fmt.Errorf("%s configuration not found", name)
+	}
+	value := resp.KV[0].Value.(string)
+	return []byte(value), nil
 }
 
 func (client *coreKeeperClient) PutConfigurationValue(name string, value []byte) error {
-	err := client.keeperClient.KV().Put(client.configBasePath, value)
+	keyPath := client.fullPath(name)
+	err := client.keeperClient.KV().Put(keyPath, value)
 	if err != nil {
 		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
 	}
