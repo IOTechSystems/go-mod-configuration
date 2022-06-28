@@ -57,6 +57,13 @@ func configValueExists(key string, client *coreKeeperClient) bool {
 	return exists
 }
 
+func TestIsAlive(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+	if !client.IsAlive() {
+		t.Fatal("Core Keeper is not running")
+	}
+}
+
 func TestHasConfigurationFalse(t *testing.T) {
 	serviceName := getUniqueServiceName()
 	client := makeCoreKeeperClient(serviceName)
@@ -224,71 +231,42 @@ func TestPutConfiguration(t *testing.T) {
 	assert.True(t, configValueExists("LogLevel", client))
 }
 
-type ConfigurationStruct struct {
-	Writable WritableInfo
-}
-type WritableInfo struct {
-	LogLevel        string
-	InsecureSecrets InsecureSecrets
-	Telemetry       TelemetryInfo
-}
-
-// InsecureSecrets is used to hold the secrets stored in the configuration
-type InsecureSecrets map[string]InsecureSecretsInfo
-
-// InsecureSecretsInfo encapsulates info used to retrieve insecure secrets
-type InsecureSecretsInfo struct {
-	Path    string
-	Secrets map[string]string
-}
-
-// TelemetryInfo contains the configuration for a service's metrics collection
-type TelemetryInfo struct {
-	// Interval is the time duration in which to collect and report the service's metrics
-	Interval string
-	// PublishTopicPrefix is the base topic in which to publish (report) the service's metrics to the EdgeX MessageBus
-	// The service name and the metric name are appended to this base topic. i.e. <prefix>/<service-name>/<metric-name>
-	PublishTopicPrefix string
-	// Metrics is the list of service's metrics that can be collected. Each of the service's metrics must be in the list
-	// and set to true if enable or false if disabled.
-	Metrics map[string]bool
-	// Tags is a list of service level tags that are attached to every metric reported for the service
-	// Example: Gateway = "Gateway123"
-	Tags map[string]string
-}
-
 func TestGetConfiguration(t *testing.T) {
 	mockServiceName := getUniqueServiceName()
 	client := makeCoreKeeperClient(mockServiceName)
 
-	mockConf := ConfigurationStruct{
-		Writable: WritableInfo{
-			LogLevel: "INFO",
-			InsecureSecrets: map[string]InsecureSecretsInfo{
-				"DB": {
-					Path:    "redisdb",
-					Secrets: map[string]string{"username": "xxx", "password": "yyy"},
-				},
-			},
+	expected := TestConfig{
+		Logging: LoggingInfo{
+			EnableRemote: true,
+			File:         "NONE",
 		},
+		Port:     8000,
+		Host:     "localhost",
+		LogLevel: "debug",
 	}
 
-	err := client.PutConfiguration(mockConf, true)
+	err := client.PutConfiguration(expected, true)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
 
-	result, err := client.GetConfiguration(&ConfigurationStruct{})
+	result, err := client.GetConfiguration(&TestConfig{})
 
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
 
-	configuration := (result).(*ConfigurationStruct)
+	actual := (result).(*TestConfig)
 
-	if !assert.NotNil(t, configuration) {
+	if !assert.NotNil(t, expected) {
 		t.Fatal()
 	}
+
+	assert.Equal(t, expected.Logging.EnableRemote, actual.Logging.EnableRemote, "Logging.EnableRemote not as expected")
+	assert.Equal(t, expected.Logging.File, actual.Logging.File, "Logging.File not as expected")
+	assert.Equal(t, expected.Port, actual.Port, "Port not as expected")
+	assert.Equal(t, expected.Host, actual.Host, "Host not as expected")
+	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
 }
 
 func TestGetConfigurationValue(t *testing.T) {
