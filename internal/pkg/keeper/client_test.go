@@ -3,9 +3,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package corekeeper
+package keeper
 
 import (
+	"net/http/httptest"
+	"net/url"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -13,16 +16,19 @@ import (
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
 	"github.com/pelletier/go-toml"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	serviceName = "coreKeeperUnitTest"
-	testHost    = "localhost"
-	port        = 59883
 	dummyConfig = "dummy"
+)
+
+// change values to localhost and 59883 if you need to run tests against real Core Keeper service running locally
+var (
+	testHost = ""
+	port     = 0
 )
 
 type LoggingInfo struct {
@@ -57,6 +63,32 @@ func configValueExists(key string, client *coreKeeperClient) bool {
 	return exists
 }
 
+var mockCoreKeeper *MockCoreKeeper
+
+func reset() {
+	// Make sure the configuration not exists
+	if mockCoreKeeper != nil {
+		mockCoreKeeper.Reset()
+	}
+}
+
+func TestMain(m *testing.M) {
+	var testMockServer *httptest.Server
+	if testHost == "" || port != 59883 {
+		mockCoreKeeper = NewMockCoreKeeper()
+		testMockServer = mockCoreKeeper.Start()
+
+		URL, _ := url.Parse(testMockServer.URL)
+		testHost = URL.Hostname()
+		port, _ = strconv.Atoi(URL.Port())
+	}
+	exitCode := m.Run()
+	if testMockServer != nil {
+		defer testMockServer.Close()
+	}
+	os.Exit(exitCode)
+}
+
 func TestIsAlive(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 	if !client.IsAlive() {
@@ -65,11 +97,10 @@ func TestIsAlive(t *testing.T) {
 }
 
 func TestHasConfigurationFalse(t *testing.T) {
-	serviceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(serviceName)
+	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration doesn't already exists
-	//reset(t, client)
+	// Make sure the configuration not exists
+	reset()
 
 	actual, err := client.HasConfiguration()
 	if !assert.NoError(t, err) {
@@ -79,11 +110,15 @@ func TestHasConfigurationFalse(t *testing.T) {
 }
 
 func TestHasConfigurationTrue(t *testing.T) {
-	serviceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(serviceName)
+	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration doesn't already exists
-	//reset(t, client)
+	// Make sure the configuration not exists
+	reset()
+
+	err := client.PutConfiguration(dummyConfig, true)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
 
 	actual, err := client.HasConfiguration()
 	if !assert.NoError(t, err) {
@@ -93,11 +128,10 @@ func TestHasConfigurationTrue(t *testing.T) {
 }
 
 func TestHasSubConfigurationFalse(t *testing.T) {
-	serviceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(serviceName)
+	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration doesn't already exists
-	//reset(t, client)
+	// Make sure the configuration not exists
+	reset()
 
 	actual, err := client.HasSubConfiguration(dummyConfig)
 	if !assert.NoError(t, err) {
@@ -107,11 +141,12 @@ func TestHasSubConfigurationFalse(t *testing.T) {
 }
 
 func TestHasSubConfigurationTrue(t *testing.T) {
-	serviceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(serviceName)
+	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration doesn't already exists
-	//reset(t, client)
+	// Make sure the configuration not exists
+	reset()
+
+	_ = client.PutConfigurationValue(dummyConfig, []byte(dummyConfig))
 
 	actual, err := client.HasSubConfiguration(dummyConfig)
 	if !assert.NoError(t, err) {
@@ -133,10 +168,13 @@ func createConfigMap() map[string]interface{} {
 	return configMap
 }
 
-func TestPutConfigurationToml(t *testing.T) {
+func TestPutConfigurationTomlNoPreValues(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
-	configMap := createConfigMap()
 
+	// Make sure the configuration not exists
+	reset()
+
+	configMap := createConfigMap()
 	configToml, err := toml.TreeFromMap(configMap)
 	if err != nil {
 		t.Fatalf("unable to create TOML Tree from map: %v", err)
@@ -149,12 +187,29 @@ func TestPutConfigurationToml(t *testing.T) {
 }
 
 func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
-	client := makeCoreKeeperClient("coreKeeperUnitTest321867000")
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
 	configMap := createConfigMap()
-	originConfig := configMap
-	// overwrite the configMap fields
-	configMap["nestedNode"] = map[string]interface{}{"field1": "xxx", "field2": "yyy"}
 	configToml, err := toml.TreeFromMap(configMap)
+	if err != nil {
+		t.Fatalf("unable to create TOML Tree from map: %v", err)
+	}
+	err = client.PutConfigurationToml(configToml, false)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	// the initial config value before updating
+	expected, err := client.GetConfigurationValue("nestedNode/field1")
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	// overwrite the configMap fields
+	configMap["nestedNode"] = map[string]interface{}{"field1": "overwrite1", "field2": "overwrite2"}
+	configToml, err = toml.TreeFromMap(configMap)
 	if err != nil {
 		t.Fatalf("unable to create TOML Tree from map: %v", err)
 	}
@@ -168,19 +223,35 @@ func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
-	expected := []byte(originConfig["nestedNode"].(map[string]interface{})["field1"].(string))
 	if !assert.Equal(t, expected, actual, "Values for %s are not equal, expected equal", "nestedNode/field1") {
 		t.Fatal()
 	}
 }
 
 func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
-	client := makeCoreKeeperClient("coreKeeperUnitTest321867000")
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
 	configMap := createConfigMap()
-	originConfig := configMap
-	// overwrite the configMap fields
-	configMap["nestedNode"] = map[string]interface{}{"field1": "value1", "field2": "value2"}
 	configToml, err := toml.TreeFromMap(configMap)
+	if err != nil {
+		t.Fatalf("unable to create TOML Tree from map: %v", err)
+	}
+	err = client.PutConfigurationToml(configToml, false)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	// the initial config value before updating
+	expected, err := client.GetConfigurationValue("nestedNode/field1")
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	// overwrite the configMap fields
+	configMap["nestedNode"] = map[string]interface{}{"field1": "overwrite1", "field2": "overwrite2"}
+	configToml, err = toml.TreeFromMap(configMap)
 	if err != nil {
 		t.Fatalf("unable to create TOML Tree from map: %v", err)
 	}
@@ -194,13 +265,17 @@ func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
-	expected := []byte(originConfig["nestedNode"].(map[string]interface{})["field1"].(string))
 	if !assert.NotEqual(t, expected, actual, "Values for %s are equal, expected not equal", "nestedNode/field1") {
 		t.Fatal()
 	}
 }
 
 func TestPutConfiguration(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
 	expected := TestConfig{
 		Logging: LoggingInfo{
 			EnableRemote: true,
@@ -210,9 +285,6 @@ func TestPutConfiguration(t *testing.T) {
 		Host:     "localhost",
 		LogLevel: "debug",
 	}
-
-	client := makeCoreKeeperClient(getUniqueServiceName())
-
 	err := client.PutConfiguration(expected, true)
 	if !assert.NoErrorf(t, err, "unable to put configuration: %v", err) {
 		t.Fatal()
@@ -232,8 +304,10 @@ func TestPutConfiguration(t *testing.T) {
 }
 
 func TestGetConfiguration(t *testing.T) {
-	mockServiceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(mockServiceName)
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
 
 	expected := TestConfig{
 		Logging: LoggingInfo{
@@ -251,7 +325,6 @@ func TestGetConfiguration(t *testing.T) {
 	}
 
 	result, err := client.GetConfiguration(&TestConfig{})
-
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -269,13 +342,44 @@ func TestGetConfiguration(t *testing.T) {
 	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
 }
 
+func TestConfigurationValueExists(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
+	key := "Foo"
+	value := []byte("bar")
+
+	// verify the config value not exists initially
+	actual, err := client.ConfigurationValueExists(key)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	if !assert.False(t, actual) {
+		t.Fatal()
+	}
+
+	err = client.PutConfigurationValue(key, value)
+	assert.NoError(t, err)
+
+	actual, err = client.ConfigurationValueExists(key)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+	if !assert.True(t, actual) {
+		t.Fatal()
+	}
+}
+
 func TestGetConfigurationValue(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
 	key := "Foo"
 	expected := []byte("bar")
-
-	uniqueServiceName := getUniqueServiceName()
-	client := makeCoreKeeperClient(uniqueServiceName)
-
 	err := client.PutConfigurationValue(key, expected)
 	assert.NoError(t, err)
 
@@ -289,16 +393,13 @@ func TestGetConfigurationValue(t *testing.T) {
 }
 
 func TestPutConfigurationValue(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
 	key := "Foo"
 	expected := []byte("bar")
-
-	uniqueServiceName := getUniqueServiceName()
-
-	client := makeCoreKeeperClient(uniqueServiceName)
-
-	// Make sure the configuration doesn't already exists
-	// reset(t, client)
-
 	err := client.PutConfigurationValue(key, expected)
 	assert.NoError(t, err)
 
@@ -310,7 +411,7 @@ func TestPutConfigurationValue(t *testing.T) {
 		t.Fatal()
 	}
 
-	actual := []byte(resp.KV[0].Value.(string))
+	actual := []byte(resp.KVs[0].Value.(string))
 
 	assert.Equal(t, expected, actual)
 }

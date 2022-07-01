@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package corekeeper
+package api
 
 // key delimiter for edgex keeper
 const KeyDelimiter = "/"

@@ -3,12 +3,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package corekeeper
+package keeper
 
 import (
 	"strconv"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/corekeeper"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
 )
 
 type pair struct {
@@ -21,7 +21,7 @@ func convertMapToKVPairs(path string, interfaceMap interface{}) []*pair {
 
 	pathPre := ""
 	if path != "" {
-		pathPre = path + corekeeper.KeyDelimiter
+		pathPre = path + api.KeyDelimiter
 	}
 
 	switch value := interfaceMap.(type) {

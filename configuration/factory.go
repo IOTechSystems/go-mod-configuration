@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/consul"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/corekeeper"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 )
 
@@ -36,8 +36,8 @@ func NewConfigurationClient(config types.ServiceConfig) (Client, error) {
 		var err error
 		client, err := consul.NewConsulClient(config)
 		return client, err
-	case "core-keeper":
-		client := corekeeper.NewCoreKeeperClient(config)
+	case "keeper":
+		client := keeper.NewCoreKeeperClient(config)
 		return client, nil
 	default:
 		return nil, fmt.Errorf("unknown configuration client type '%s' requested", config.Type)

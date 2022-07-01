@@ -3,15 +3,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package corekeeper
+package keeper
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/corekeeper"
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/corekeeper/dtos"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -26,7 +26,7 @@ func decode(prefix string, pairs []dtos.KV, configTarget interface{}) error {
 		// Determine what map we're writing the value to. We split by '/'
 		// to determine any sub-maps that need to be created.
 		m := raw
-		children := strings.Split(key, corekeeper.KeyDelimiter)
+		children := strings.Split(key, api.KeyDelimiter)
 		if len(children) > 0 {
 			key = children[len(children)-1]
 			children = children[:len(children)-1]
@@ -43,34 +43,34 @@ func decode(prefix string, pairs []dtos.KV, configTarget interface{}) error {
 				m = subm
 			}
 		}
-
-		switch p.Value.(type) {
+		value := p.Value
+		switch value.(type) {
 		case bool:
-			m[key] = p.Value.(bool)
+			m[key] = value.(bool)
 		case int:
-			m[key] = p.Value.(int)
+			m[key] = value.(int)
 		case int64:
-			m[key] = p.Value.(int64)
+			m[key] = value.(int64)
 		case float64:
-			m[key] = p.Value.(float64)
+			m[key] = value.(float64)
 		case string:
-			m[key] = p.Value.(string)
+			m[key] = value.(string)
 		default:
 			return errors.New("unknown data type of the stored value")
 		}
-
 	}
 
 	// Now decode into it
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Metadata: nil,
-		Result:   configTarget,
+		Metadata:         nil,
+		WeaklyTypedInput: true,
+		Result:           configTarget,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("json decoding failed, err: %v", err)
 	}
 	if err := decoder.Decode(raw); err != nil {
-		return err
+		return fmt.Errorf("json decoding failed, err: %v", err)
 	}
 
 	return nil

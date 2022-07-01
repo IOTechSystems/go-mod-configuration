@@ -16,16 +16,9 @@ import (
 	"net/url"
 )
 
-// Versionable shows the API version in DTOs
-type Versionable struct {
-	ApiVersion string `json:"apiVersion" yaml:"apiVersion" validate:"required"`
-}
-
-type BaseResponse struct {
-	Versionable `json:",inline"`
-	RequestId   string `json:"requestId,omitempty"`
-	Message     string `json:"message,omitempty"`
-	StatusCode  int    `json:"statusCode"`
+type ErrorResponse struct {
+	Message    string `json:"message,omitempty"`
+	StatusCode int    `json:"statusCode"`
 }
 
 // Helper method to get the body from the response after making the request
@@ -73,29 +66,33 @@ func createRequest(httpMethod string, baseUrl string, requestPath string, reques
 
 // sendRequest will make a request with raw data to the specified URL.
 // It returns the body as a byte array if successful and an error otherwise.
-func sendRequest(req *http.Request) ([]byte, error) {
+func sendRequest(req *http.Request) ([]byte, ErrorResponse) {
+	var errResponse ErrorResponse
+
 	resp, err := makeRequest(req)
 	if err != nil {
-		return nil, (err)
+		return nil, errResponse
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	bodyBytes, err := getBody(resp)
 	if err != nil {
-		return nil, err
+		return nil, errResponse
 	}
-	if resp.StatusCode <= http.StatusMultiStatus || resp.StatusCode == 404 {
-		return bodyBytes, nil
+
+	if resp.StatusCode <= http.StatusMultiStatus {
+		return bodyBytes, errResponse
 	}
 
 	// Handle error response
-	var errResponse BaseResponse
 	e := json.Unmarshal(bodyBytes, &errResponse)
 	if e != nil {
-		return nil, e
+		return nil, errResponse
 	}
 
-	return nil, errors.New(errResponse.Message)
+	return nil, errResponse
 }
 
 func createRequestWithRawData(httpMethod string, baseUrl string, requestPath string, requestParams url.Values, data interface{}) (*http.Request, error) {
