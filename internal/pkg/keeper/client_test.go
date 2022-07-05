@@ -43,14 +43,14 @@ type TestConfig struct {
 	LogLevel string
 }
 
-func makeCoreKeeperClient(serviceName string) *coreKeeperClient {
+func makeCoreKeeperClient(serviceName string) *keeperClient {
 	config := types.ServiceConfig{
 		Host:     testHost,
 		Port:     port,
 		BasePath: serviceName,
 	}
 
-	client := NewCoreKeeperClient(config)
+	client := NewKeeperClient(config)
 	return client
 }
 
@@ -58,7 +58,7 @@ func getUniqueServiceName() string {
 	return serviceName + strconv.Itoa(time.Now().Nanosecond())
 }
 
-func configValueExists(key string, client *coreKeeperClient) bool {
+func configValueExists(key string, client *keeperClient) bool {
 	exists, _ := client.ConfigurationValueExists(key)
 	return exists
 }

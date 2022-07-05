@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strconv"
 	"sync"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
@@ -17,18 +18,18 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-type coreKeeperClient struct {
+type keeperClient struct {
 	keeperUrl       string
-	keeperClient    *api.Client
+	keeperClient    *api.Caller
 	configBasePath  string
 	watchingDoneCtx context.Context
 	watchingDone    context.CancelFunc
 	watchingWait    sync.WaitGroup
 }
 
-// NewCoreKeeperClient creates a new Core Keeper Client.
-func NewCoreKeeperClient(config types.ServiceConfig) *coreKeeperClient {
-	client := coreKeeperClient{
+// NewKeeperClient creates a new Keeper Client.
+func NewKeeperClient(config types.ServiceConfig) *keeperClient {
+	client := keeperClient{
 		keeperUrl:      config.GetUrl(),
 		configBasePath: config.BasePath,
 	}
@@ -39,16 +40,16 @@ func NewCoreKeeperClient(config types.ServiceConfig) *coreKeeperClient {
 	return &client
 }
 
-func (client *coreKeeperClient) fullPath(name string) string {
+func (client *keeperClient) fullPath(name string) string {
 	return path.Join(client.configBasePath, name)
 }
 
-func (client *coreKeeperClient) createKeeperClient(url string) {
-	client.keeperClient = api.NewClient(url)
+func (client *keeperClient) createKeeperClient(url string) {
+	client.keeperClient = api.NewCaller(url)
 }
 
 // IsAlive simply checks if Core Keeper is up and running at the configured URL
-func (client *coreKeeperClient) IsAlive() bool {
+func (client *keeperClient) IsAlive() bool {
 	err := client.keeperClient.Ping()
 	if err != nil {
 		return false
@@ -58,7 +59,7 @@ func (client *coreKeeperClient) IsAlive() bool {
 }
 
 // HasConfiguration checks to see if Consul contains the service's configuration.
-func (client *coreKeeperClient) HasConfiguration() (bool, error) {
+func (client *keeperClient) HasConfiguration() (bool, error) {
 	resp, err := client.keeperClient.KV().Keys(client.configBasePath)
 	if err != nil {
 		return false, fmt.Errorf("checking configuration existence from Core Keeper failed: %v", err)
@@ -69,7 +70,7 @@ func (client *coreKeeperClient) HasConfiguration() (bool, error) {
 	return true, nil
 }
 
-func (client *coreKeeperClient) HasSubConfiguration(name string) (bool, error) {
+func (client *keeperClient) HasSubConfiguration(name string) (bool, error) {
 	keyPath := client.fullPath(name)
 	resp, err := client.keeperClient.KV().Keys(keyPath)
 	if err != nil {
@@ -82,7 +83,7 @@ func (client *coreKeeperClient) HasSubConfiguration(name string) (bool, error) {
 }
 
 // PutConfigurationToml puts a full toml configuration into Core Keeper
-func (client *coreKeeperClient) PutConfigurationToml(configuration *toml.Tree, overwrite bool) error {
+func (client *keeperClient) PutConfigurationToml(configuration *toml.Tree, overwrite bool) error {
 	configurationMap := configuration.ToMap()
 	err := client.PutConfiguration(configurationMap, overwrite)
 	if err != nil {
@@ -91,7 +92,7 @@ func (client *coreKeeperClient) PutConfigurationToml(configuration *toml.Tree, o
 	return nil
 }
 
-func (client *coreKeeperClient) PutConfiguration(config interface{}, overwrite bool) error {
+func (client *keeperClient) PutConfiguration(config interface{}, overwrite bool) error {
 	var err error
 	if overwrite {
 		err = client.keeperClient.KV().PutKeys(client.configBasePath, config)
@@ -116,7 +117,7 @@ func (client *coreKeeperClient) PutConfiguration(config interface{}, overwrite b
 	return nil
 }
 
-func (client *coreKeeperClient) GetConfiguration(configStruct interface{}) (interface{}, error) {
+func (client *keeperClient) GetConfiguration(configStruct interface{}) (interface{}, error) {
 	exists, err := client.HasConfiguration()
 	if err != nil {
 		return nil, err
@@ -138,12 +139,12 @@ func (client *coreKeeperClient) GetConfiguration(configStruct interface{}) (inte
 	return configStruct, nil
 }
 
-func (client *coreKeeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
+func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
 }
 
-func (client *coreKeeperClient) StopWatching() {}
+func (client *keeperClient) StopWatching() {}
 
-func (client *coreKeeperClient) ConfigurationValueExists(name string) (bool, error) {
+func (client *keeperClient) ConfigurationValueExists(name string) (bool, error) {
 	keyPath := client.fullPath(name)
 	res, err := client.keeperClient.KV().Keys(keyPath)
 	if err != nil {
@@ -155,7 +156,7 @@ func (client *coreKeeperClient) ConfigurationValueExists(name string) (bool, err
 	return true, nil
 }
 
-func (client *coreKeeperClient) GetConfigurationValue(name string) ([]byte, error) {
+func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	keyPath := client.fullPath(name)
 	resp, err := client.keeperClient.KV().Get(keyPath)
 	if err != nil {
@@ -165,11 +166,41 @@ func (client *coreKeeperClient) GetConfigurationValue(name string) ([]byte, erro
 		return nil, fmt.Errorf("%s configuration not found", name)
 	}
 
-	value := resp.KVs[0].Value.(string)
-	return []byte(value), nil
+	var valueStr string
+	switch value := resp.KVs[0].Value.(type) {
+	case string:
+		valueStr = value
+	case int:
+		valueStr = strconv.Itoa(value)
+	case int8:
+		value8 := int(value)
+		valueStr = strconv.Itoa(value8)
+	case int16:
+		value16 := int(value)
+		valueStr = strconv.Itoa(value16)
+	case int32:
+		value32 := int(value)
+		valueStr = strconv.Itoa(value32)
+	case int64:
+		value64 := int(value)
+		valueStr = strconv.Itoa(value64)
+	case float32:
+		valueF64 := float64(value)
+		valueStr = strconv.FormatFloat(valueF64, 'g', -1, 32)
+	case float64:
+		valueStr = strconv.FormatFloat(value, 'g', -1, 64)
+	case bool:
+		valueStr = strconv.FormatBool(value)
+	case nil:
+		valueStr = ""
+	default:
+		valueStr = fmt.Sprintf("%v", value)
+	}
+
+	return []byte(valueStr), nil
 }
 
-func (client *coreKeeperClient) PutConfigurationValue(name string, value []byte) error {
+func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
 	keyPath := client.fullPath(name)
 	err := client.keeperClient.KV().Put(keyPath, value)
 	if err != nil {

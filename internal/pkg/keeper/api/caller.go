@@ -11,18 +11,18 @@ import (
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
 )
 
-type Client struct {
+type Caller struct {
 	baseUrl string
 }
 
-// NewClient creates an instance of Client
-func NewClient(baseUrl string) *Client {
-	return &Client{
+// NewCaller creates an instance of Caller
+func NewCaller(baseUrl string) *Caller {
+	return &Caller{
 		baseUrl: baseUrl,
 	}
 }
 
-func (c *Client) Ping() error {
+func (c *Caller) Ping() error {
 	errResp := http.GetRequest(nil, c.baseUrl, ApiPingRoute, nil)
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)

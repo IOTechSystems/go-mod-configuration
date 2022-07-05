@@ -37,7 +37,7 @@ func NewConfigurationClient(config types.ServiceConfig) (Client, error) {
 		client, err := consul.NewConsulClient(config)
 		return client, err
 	case "keeper":
-		client := keeper.NewCoreKeeperClient(config)
+		client := keeper.NewKeeperClient(config)
 		return client, nil
 	default:
 		return nil, fmt.Errorf("unknown configuration client type '%s' requested", config.Type)

@@ -18,11 +18,11 @@ import (
 
 // KV is used to manipulate the K/V API
 type KV struct {
-	c *Client
+	c *Caller
 }
 
 // KV is used to return a handle to the K/V apis
-func (c *Client) KV() *KV {
+func (c *Caller) KV() *KV {
 	return &KV{c}
 }
 

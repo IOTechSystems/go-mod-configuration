@@ -46,15 +46,23 @@ func decode(prefix string, pairs []dtos.KV, configTarget interface{}) error {
 		value := p.Value
 		switch value.(type) {
 		case bool:
-			m[key] = value.(bool)
+			m[key] = value
 		case int:
-			m[key] = value.(int)
+			m[key] = value
+		case int8:
+			m[key] = value
+		case int16:
+			m[key] = value
+		case int32:
+			m[key] = value
 		case int64:
-			m[key] = value.(int64)
+			m[key] = value
+		case float32:
+			m[key] = value
 		case float64:
-			m[key] = value.(float64)
+			m[key] = value
 		case string:
-			m[key] = value.(string)
+			m[key] = value
 		default:
 			return errors.New("unknown data type of the stored value")
 		}
