@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
 	"github.com/pelletier/go-toml"
@@ -340,6 +342,62 @@ func TestGetConfiguration(t *testing.T) {
 	assert.Equal(t, expected.Port, actual.Port, "Port not as expected")
 	assert.Equal(t, expected.Host, actual.Host, "Host not as expected")
 	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
+}
+
+func TestWatchForChanges(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
+	expectedConfig := models.ConfigurationStruct{
+		MessageQueue: models.MessageBusInfo{
+			Type:               "zero",
+			Protocol:           "tcp",
+			Host:               "localhost",
+			Port:               5563,
+			PublishTopicPrefix: "edgex/configs",
+			Optional:           map[string]string{},
+		},
+		Writable: models.WritableInfo{
+			LogLevel:        "INFO",
+			InsecureSecrets: map[string]models.InsecureSecretsInfo{},
+			Telemetry: models.TelemetryInfo{
+				Metrics: map[string]bool{"EventsPersisted": false, "ReadingsPersisted": false},
+				Tags:    map[string]string{"Gateway": "my-iot-gateway"},
+			},
+		},
+	}
+
+	err := client.PutConfiguration(expectedConfig, true)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	loggingUpdateChannel := make(chan interface{})
+	errorChannel := make(chan error)
+	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
+	expectedLogLevel := "DEBUG"
+
+	go func() {
+		expectedBytes := []byte(expectedLogLevel)
+		err = client.PutConfigurationValue("Writable/LogLevel", expectedBytes)
+	}()
+
+	for {
+		select {
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timeout waiting on Logging configuration loggingChanges")
+		case loggingChanges := <-loggingUpdateChannel:
+			assert.NotNil(t, loggingChanges)
+			logLevel := loggingChanges.(dtos.KV)
+			// Now the data should have changed
+			assert.Equal(t, logLevel.Value, expectedLogLevel)
+			return
+		case waitError := <-errorChannel:
+			t.Fatalf("received WatchForChanges error for Logging: %v", waitError)
+		}
+	}
 }
 
 func TestConfigurationValueExists(t *testing.T) {

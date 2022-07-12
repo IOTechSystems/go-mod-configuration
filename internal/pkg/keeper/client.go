@@ -7,16 +7,25 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"path"
 	"strconv"
 	"sync"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
+	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-messaging/v2/messaging"
+	msgTypes "github.com/edgexfoundry/go-mod-messaging/v2/pkg/types"
 
 	"github.com/pelletier/go-toml"
 )
+
+const keeperTopicPrefix = "edgex/configs"
 
 type keeperClient struct {
 	keeperUrl       string
@@ -140,6 +149,69 @@ func (client *keeperClient) GetConfiguration(configStruct interface{}) (interfac
 }
 
 func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
+	// get the service configuration
+	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
+	if err != nil {
+		errorChannel <- err
+		return
+	}
+
+	msgBusConfig := config.(*models.ConfigurationStruct).MessageQueue
+	messageBus, err := messaging.NewMessageClient(msgTypes.MessageBusConfig{
+		SubscribeHost: msgTypes.HostInfo{
+			Host:     msgBusConfig.Host,
+			Port:     msgBusConfig.Port,
+			Protocol: msgBusConfig.Protocol,
+		},
+		Type:     msgBusConfig.Type,
+		Optional: msgBusConfig.Optional,
+	})
+	if err != nil {
+		errorChannel <- err
+		return
+	}
+	// connect to the message bus
+	if conErr := messageBus.Connect(); conErr != nil {
+		errorChannel <- conErr
+		return
+	}
+
+	messages := make(chan msgTypes.MessageEnvelope)
+	messageErrors := make(chan error)
+	topic := keeperTopicPrefix + "/" + client.configBasePath + "/" + waitKey
+	topics := []msgTypes.TopicChannel{
+		{
+			Topic:    topic,
+			Messages: messages,
+		},
+	}
+	err = messageBus.Subscribe(topics, messageErrors)
+	if err != nil {
+		errorChannel <- err
+	}
+
+	go func() {
+		for {
+			select {
+			case e := <-messageErrors:
+				errorChannel <- err
+				log.Fatal(e.Error())
+			case msgEnvelope := <-messages:
+				log.Printf("Event received on message queue. Topic: %s, Correlation-id: %s ", topic, msgEnvelope.CorrelationID)
+				if msgEnvelope.ContentType != http.ContentTypeJSON {
+					log.Fatalf("Incorrect content type for event message. Received: %s, Expected: %s", msgEnvelope.ContentType, http.ContentTypeJSON)
+					continue
+				}
+				var respKV dtos.KV
+				err = json.Unmarshal(msgEnvelope.Payload, &respKV)
+				if err != nil {
+					log.Fatalf("json decoding to KV struct failed. Error: %v", err.Error())
+					continue
+				}
+				updateChannel <- respKV
+			}
+		}
+	}()
 }
 
 func (client *keeperClient) StopWatching() {}

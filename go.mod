@@ -1,6 +1,7 @@
 module github.com/edgexfoundry/go-mod-configuration/v2
 
 require (
+	github.com/edgexfoundry/go-mod-messaging/v2 v2.2.0
 	github.com/hashicorp/consul/api v1.12.0
 	github.com/mitchellh/consulstructure v0.0.0-20190329231841-56fdc4d2da54
 	github.com/mitchellh/mapstructure v1.1.2
@@ -12,7 +13,10 @@ require (
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/eclipse/paho.mqtt.golang v1.3.5 // indirect
 	github.com/fatih/color v1.9.0 // indirect
+	github.com/go-redis/redis/v7 v7.3.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
 	github.com/hashicorp/go-hclog v0.12.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
@@ -26,6 +30,7 @@ require (
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.0 // indirect
+	github.com/pebbe/zmq4 v1.2.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/stretchr/objx v0.1.1 // indirect
