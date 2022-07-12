@@ -149,10 +149,48 @@ func (client *keeperClient) GetConfiguration(configStruct interface{}) (interfac
 }
 
 func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
+	messages := make(chan msgTypes.MessageEnvelope)
+	watchErrors := make(chan error)
+
+	topic := keeperTopicPrefix + "/" + client.configBasePath + "/" + waitKey
+	topics := []msgTypes.TopicChannel{
+		{
+			Topic:    topic,
+			Messages: messages,
+		},
+	}
+
+	go func() {
+		defer func() {
+			close(messages)
+			close(watchErrors)
+		}()
+		for {
+			select {
+			case e := <-watchErrors:
+				errorChannel <- e
+				log.Fatal(e.Error())
+			case msgEnvelope := <-messages:
+				log.Printf("Event received on message queue. Topic: %s, Correlation-id: %s ", topic, msgEnvelope.CorrelationID)
+				if msgEnvelope.ContentType != http.ContentTypeJSON {
+					log.Fatalf("Incorrect content type for event message. Received: %s, Expected: %s", msgEnvelope.ContentType, http.ContentTypeJSON)
+					continue
+				}
+				var respKV dtos.KV
+				err := json.Unmarshal(msgEnvelope.Payload, &respKV)
+				if err != nil {
+					log.Fatalf("json decoding to KV struct failed. Error: %v", err.Error())
+					continue
+				}
+				updateChannel <- respKV
+			}
+		}
+	}()
+
 	// get the service configuration
 	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
 	if err != nil {
-		errorChannel <- err
+		watchErrors <- err
 		return
 	}
 
@@ -167,51 +205,20 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		Optional: msgBusConfig.Optional,
 	})
 	if err != nil {
-		errorChannel <- err
+		watchErrors <- err
 		return
 	}
 	// connect to the message bus
 	if conErr := messageBus.Connect(); conErr != nil {
-		errorChannel <- conErr
+		watchErrors <- conErr
 		return
 	}
 
-	messages := make(chan msgTypes.MessageEnvelope)
-	messageErrors := make(chan error)
-	topic := keeperTopicPrefix + "/" + client.configBasePath + "/" + waitKey
-	topics := []msgTypes.TopicChannel{
-		{
-			Topic:    topic,
-			Messages: messages,
-		},
-	}
-	err = messageBus.Subscribe(topics, messageErrors)
+	err = messageBus.Subscribe(topics, watchErrors)
 	if err != nil {
-		errorChannel <- err
+		watchErrors <- err
+		return
 	}
-
-	go func() {
-		for {
-			select {
-			case e := <-messageErrors:
-				errorChannel <- err
-				log.Fatal(e.Error())
-			case msgEnvelope := <-messages:
-				log.Printf("Event received on message queue. Topic: %s, Correlation-id: %s ", topic, msgEnvelope.CorrelationID)
-				if msgEnvelope.ContentType != http.ContentTypeJSON {
-					log.Fatalf("Incorrect content type for event message. Received: %s, Expected: %s", msgEnvelope.ContentType, http.ContentTypeJSON)
-					continue
-				}
-				var respKV dtos.KV
-				err = json.Unmarshal(msgEnvelope.Payload, &respKV)
-				if err != nil {
-					log.Fatalf("json decoding to KV struct failed. Error: %v", err.Error())
-					continue
-				}
-				updateChannel <- respKV
-			}
-		}
-	}()
 }
 
 func (client *keeperClient) StopWatching() {}
