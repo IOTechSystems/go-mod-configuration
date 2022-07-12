@@ -400,6 +400,49 @@ func TestWatchForChanges(t *testing.T) {
 	}
 }
 
+func TestStopWatching(t *testing.T) {
+	client := makeCoreKeeperClient(getUniqueServiceName())
+
+	// Make sure the configuration not exists
+	reset()
+
+	expectedConfig := models.ConfigurationStruct{
+		MessageQueue: models.MessageBusInfo{
+			Type:               "zero",
+			Protocol:           "tcp",
+			Host:               "localhost",
+			Port:               5563,
+			PublishTopicPrefix: "edgex/configs",
+			Optional:           map[string]string{},
+		},
+		Writable: models.WritableInfo{
+			LogLevel:        "INFO",
+			InsecureSecrets: map[string]models.InsecureSecretsInfo{},
+			Telemetry: models.TelemetryInfo{
+				Metrics: map[string]bool{"EventsPersisted": false, "ReadingsPersisted": false},
+				Tags:    map[string]string{"Gateway": "my-iot-gateway"},
+			},
+		},
+	}
+
+	err := client.PutConfiguration(expectedConfig, true)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	loggingUpdateChannel := make(chan interface{})
+	errorChannel := make(chan error)
+	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
+	allStopped := false
+	go func() {
+		client.StopWatching()
+		allStopped = true
+	}()
+
+	<-time.Tick(2 * time.Second)
+	assert.True(t, allStopped)
+}
+
 func TestConfigurationValueExists(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 

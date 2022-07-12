@@ -152,7 +152,7 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 	messages := make(chan msgTypes.MessageEnvelope)
 	watchErrors := make(chan error)
 
-	topic := keeperTopicPrefix + "/" + client.configBasePath + "/" + waitKey
+	topic := path.Join(keeperTopicPrefix, client.configBasePath, waitKey)
 	topics := []msgTypes.TopicChannel{
 		{
 			Topic:    topic,
@@ -160,6 +160,7 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		},
 	}
 
+	client.watchingWait.Add(1)
 	go func() {
 		defer func() {
 			close(messages)
@@ -167,6 +168,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		}()
 		for {
 			select {
+			case <-client.watchingDoneCtx.Done():
+				client.watchingWait.Done()
+				return
 			case e := <-watchErrors:
 				errorChannel <- e
 				log.Fatal(e.Error())
@@ -221,7 +225,10 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 	}
 }
 
-func (client *keeperClient) StopWatching() {}
+func (client *keeperClient) StopWatching() {
+	client.watchingDone()
+	client.watchingWait.Wait()
+}
 
 func (client *keeperClient) ConfigurationValueExists(name string) (bool, error) {
 	keyPath := client.fullPath(name)
