@@ -10,10 +10,10 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
@@ -344,30 +344,34 @@ func TestGetConfiguration(t *testing.T) {
 	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
 }
 
+var testWatchConfig = models.ConfigurationStruct{
+	MessageQueue: models.MessageBusInfo{
+		Type:               "mqtt",
+		Protocol:           "tcp",
+		Host:               "localhost",
+		Port:               1883,
+		PublishTopicPrefix: "edgex/configs",
+		Optional: map[string]string{
+			"ClientId":       "core-keeper-unit-test",
+			"Qos":            "0",
+			"KeepAlive":      "10",
+			"Retained":       "false",
+			"AutoReconnect":  "true",
+			"ConnectTimeout": "5",
+		},
+	},
+	Writable: models.WritableInfo{
+		LogLevel: "INFO",
+	},
+}
+
 func TestWatchForChanges(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
 	// Make sure the configuration not exists
 	reset()
 
-	expectedConfig := models.ConfigurationStruct{
-		MessageQueue: models.MessageBusInfo{
-			Type:               "zero",
-			Protocol:           "tcp",
-			Host:               "localhost",
-			Port:               5563,
-			PublishTopicPrefix: "edgex/configs",
-			Optional:           map[string]string{},
-		},
-		Writable: models.WritableInfo{
-			LogLevel:        "INFO",
-			InsecureSecrets: map[string]models.InsecureSecretsInfo{},
-			Telemetry: models.TelemetryInfo{
-				Metrics: map[string]bool{"EventsPersisted": false, "ReadingsPersisted": false},
-				Tags:    map[string]string{"Gateway": "my-iot-gateway"},
-			},
-		},
-	}
+	expectedConfig := testWatchConfig
 
 	err := client.PutConfiguration(expectedConfig, true)
 	if !assert.NoError(t, err) {
@@ -376,28 +380,41 @@ func TestWatchForChanges(t *testing.T) {
 
 	loggingUpdateChannel := make(chan interface{})
 	errorChannel := make(chan error)
-	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
 	expectedLogLevel := "DEBUG"
-
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	receivedUpdate := false
 	go func() {
-		expectedBytes := []byte(expectedLogLevel)
-		err = client.PutConfigurationValue("Writable/LogLevel", expectedBytes)
-	}()
-
-	for {
-		select {
-		case <-time.After(5 * time.Second):
-			t.Fatalf("timeout waiting on Logging configuration loggingChanges")
-		case loggingChanges := <-loggingUpdateChannel:
-			assert.NotNil(t, loggingChanges)
-			logLevel := loggingChanges.(dtos.KV)
-			// Now the data should have changed
-			assert.Equal(t, logLevel.Value, expectedLogLevel)
-			return
-		case waitError := <-errorChannel:
-			t.Fatalf("received WatchForChanges error for Logging: %v", waitError)
+		defer func() {
+			close(loggingUpdateChannel)
+			close(errorChannel)
+		}()
+		for {
+			select {
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting on Logging configuration loggingChanges")
+			case loggingChanges := <-loggingUpdateChannel:
+				assert.NotNil(t, loggingChanges)
+				logLevel := loggingChanges.(*models.WritableInfo)
+				// Now the data should have changed
+				assert.Equal(t, logLevel.LogLevel, expectedLogLevel)
+				receivedUpdate = true
+				wg.Done()
+				return
+			case watchErr := <-errorChannel:
+				t.Fatalf("received WatchForChanges error for Logging: %v", watchErr)
+				return
+			}
 		}
-	}
+	}()
+	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
+
+	expectedBytes := []byte(expectedLogLevel)
+	err = client.PutConfigurationValue("Writable/LogLevel", expectedBytes)
+	require.NoError(t, err)
+
+	wg.Wait()
+	assert.True(t, receivedUpdate)
 }
 
 func TestStopWatching(t *testing.T) {
@@ -406,24 +423,7 @@ func TestStopWatching(t *testing.T) {
 	// Make sure the configuration not exists
 	reset()
 
-	expectedConfig := models.ConfigurationStruct{
-		MessageQueue: models.MessageBusInfo{
-			Type:               "zero",
-			Protocol:           "tcp",
-			Host:               "localhost",
-			Port:               5563,
-			PublishTopicPrefix: "edgex/configs",
-			Optional:           map[string]string{},
-		},
-		Writable: models.WritableInfo{
-			LogLevel:        "INFO",
-			InsecureSecrets: map[string]models.InsecureSecretsInfo{},
-			Telemetry: models.TelemetryInfo{
-				Metrics: map[string]bool{"EventsPersisted": false, "ReadingsPersisted": false},
-				Tags:    map[string]string{"Gateway": "my-iot-gateway"},
-			},
-		},
-	}
+	expectedConfig := testWatchConfig
 
 	err := client.PutConfiguration(expectedConfig, true)
 	if !assert.NoError(t, err) {

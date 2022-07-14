@@ -37,38 +37,8 @@ type MessageBusInfo struct {
 	SubscribeEnabled bool
 }
 
-// InsecureSecrets is used to hold the secrets stored in the configuration
-// copied from go-mod-bootstrap/config/types.go
-type InsecureSecrets map[string]InsecureSecretsInfo
-
-// InsecureSecretsInfo encapsulates info used to retrieve insecure secrets
-// copied from go-mod-bootstrap/config/types.go
-type InsecureSecretsInfo struct {
-	Path    string
-	Secrets map[string]string
-}
-
-// TelemetryInfo contains the configuration for a service's metrics collection
-// copied from go-mod-bootstrap/config/types.go
-type TelemetryInfo struct {
-	// Interval is the time duration in which to collect and report the service's metrics
-	Interval string
-	// PublishTopicPrefix is the base topic in which to publish (report) the service's metrics to the EdgeX MessageBus
-	// The service name and the metric name are appended to this base topic. i.e. <prefix>/<service-name>/<metric-name>
-	PublishTopicPrefix string
-	// Metrics is the list of service's metrics that can be collected. Each of the service's metrics must be in the list
-	// and set to true if enable or false if disabled.
-	Metrics map[string]bool
-	// Tags is a list of service level tags that are attached to every metric reported for the service
-	// Example: Gateway = "Gateway123"
-	Tags map[string]string
-}
-
 type WritableInfo struct {
-	PersistData     bool
-	LogLevel        string
-	InsecureSecrets InsecureSecrets
-	Telemetry       TelemetryInfo
+	LogLevel string
 }
 
 type ConfigurationStruct struct {

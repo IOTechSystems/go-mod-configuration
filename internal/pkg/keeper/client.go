@@ -6,13 +6,10 @@
 package keeper
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"path"
 	"strconv"
-	"sync"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
@@ -28,12 +25,10 @@ import (
 const keeperTopicPrefix = "edgex/configs"
 
 type keeperClient struct {
-	keeperUrl       string
-	keeperClient    *api.Caller
-	configBasePath  string
-	watchingDoneCtx context.Context
-	watchingDone    context.CancelFunc
-	watchingWait    sync.WaitGroup
+	keeperUrl      string
+	keeperClient   *api.Caller
+	configBasePath string
+	watchingDone   chan bool
 }
 
 // NewKeeperClient creates a new Keeper Client.
@@ -41,9 +36,8 @@ func NewKeeperClient(config types.ServiceConfig) *keeperClient {
 	client := keeperClient{
 		keeperUrl:      config.GetUrl(),
 		configBasePath: config.BasePath,
+		watchingDone:   make(chan bool),
 	}
-
-	client.watchingDoneCtx, client.watchingDone = context.WithCancel(context.Background())
 
 	client.createKeeperClient(client.keeperUrl)
 	return &client
@@ -149,55 +143,21 @@ func (client *keeperClient) GetConfiguration(configStruct interface{}) (interfac
 }
 
 func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
-	messages := make(chan msgTypes.MessageEnvelope)
-	watchErrors := make(chan error)
+	// get the service configuration
+	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
+	if err != nil {
+		errorChannel <- err
+		return
+	}
 
-	topic := path.Join(keeperTopicPrefix, client.configBasePath, waitKey)
+	messages := make(chan msgTypes.MessageEnvelope)
+	topic := path.Join(keeperTopicPrefix, client.configBasePath, waitKey, "#")
 	topics := []msgTypes.TopicChannel{
 		{
 			Topic:    topic,
 			Messages: messages,
 		},
 	}
-
-	client.watchingWait.Add(1)
-	go func() {
-		defer func() {
-			close(messages)
-			close(watchErrors)
-		}()
-		for {
-			select {
-			case <-client.watchingDoneCtx.Done():
-				client.watchingWait.Done()
-				return
-			case e := <-watchErrors:
-				errorChannel <- e
-				log.Fatal(e.Error())
-			case msgEnvelope := <-messages:
-				log.Printf("Event received on message queue. Topic: %s, Correlation-id: %s ", topic, msgEnvelope.CorrelationID)
-				if msgEnvelope.ContentType != http.ContentTypeJSON {
-					log.Fatalf("Incorrect content type for event message. Received: %s, Expected: %s", msgEnvelope.ContentType, http.ContentTypeJSON)
-					continue
-				}
-				var respKV dtos.KV
-				err := json.Unmarshal(msgEnvelope.Payload, &respKV)
-				if err != nil {
-					log.Fatalf("json decoding to KV struct failed. Error: %v", err.Error())
-					continue
-				}
-				updateChannel <- respKV
-			}
-		}
-	}()
-
-	// get the service configuration
-	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
-	if err != nil {
-		watchErrors <- err
-		return
-	}
-
 	msgBusConfig := config.(*models.ConfigurationStruct).MessageQueue
 	messageBus, err := messaging.NewMessageClient(msgTypes.MessageBusConfig{
 		SubscribeHost: msgTypes.HostInfo{
@@ -209,25 +169,53 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		Optional: msgBusConfig.Optional,
 	})
 	if err != nil {
-		watchErrors <- err
+		close(messages)
+		errorChannel <- err
 		return
 	}
 	// connect to the message bus
 	if conErr := messageBus.Connect(); conErr != nil {
-		watchErrors <- conErr
+		close(messages)
+		errorChannel <- conErr
+		return
+	}
+	watchErrors := make(chan error)
+	err = messageBus.Subscribe(topics, watchErrors)
+	if err != nil {
+		_ = messageBus.Disconnect()
+		errorChannel <- err
 		return
 	}
 
-	err = messageBus.Subscribe(topics, watchErrors)
-	if err != nil {
-		watchErrors <- err
-		return
-	}
+	go func() {
+		defer func() {
+			_ = messageBus.Disconnect()
+		}()
+		for {
+			select {
+			case <-client.watchingDone:
+				return
+			case e := <-watchErrors:
+				errorChannel <- e
+			case msgEnvelope := <-messages:
+				if msgEnvelope.ContentType != http.ContentTypeJSON {
+					continue
+				}
+				var respKV dtos.KV
+				err := json.Unmarshal(msgEnvelope.Payload, &respKV)
+				if err != nil {
+					continue
+				}
+				keyPrefix := path.Join(client.configBasePath, waitKey)
+				err = decode(keyPrefix, []dtos.KV{respKV}, configuration)
+				updateChannel <- configuration
+			}
+		}
+	}()
 }
 
 func (client *keeperClient) StopWatching() {
-	client.watchingDone()
-	client.watchingWait.Wait()
+	client.watchingDone <- true
 }
 
 func (client *keeperClient) ConfigurationValueExists(name string) (bool, error) {
