@@ -18,6 +18,11 @@ import (
 
 // decode converts the key-value pairs from core keeper to the target configuration data type
 func decode(prefix string, pairs []dtos.KV, configTarget interface{}) error {
+	// check if the prefix ends with the '/' char
+	if !strings.HasSuffix(prefix, api.KeyDelimiter) {
+		prefix += api.KeyDelimiter
+	}
+
 	raw := make(map[string]interface{})
 	for _, p := range pairs {
 		// Trim the prefix off our key first
