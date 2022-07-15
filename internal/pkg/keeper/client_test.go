@@ -10,11 +10,9 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
 	"github.com/pelletier/go-toml"
@@ -342,105 +340,6 @@ func TestGetConfiguration(t *testing.T) {
 	assert.Equal(t, expected.Port, actual.Port, "Port not as expected")
 	assert.Equal(t, expected.Host, actual.Host, "Host not as expected")
 	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
-}
-
-var testWatchConfig = models.ConfigurationStruct{
-	MessageQueue: models.MessageBusInfo{
-		Type:               "mqtt",
-		Protocol:           "tcp",
-		Host:               "localhost",
-		Port:               1883,
-		PublishTopicPrefix: "edgex/configs",
-		Optional: map[string]string{
-			"ClientId":       "core-keeper-unit-test",
-			"Qos":            "0",
-			"KeepAlive":      "10",
-			"Retained":       "false",
-			"AutoReconnect":  "true",
-			"ConnectTimeout": "5",
-		},
-	},
-	Writable: models.WritableInfo{
-		LogLevel: "INFO",
-	},
-}
-
-func TestWatchForChanges(t *testing.T) {
-	client := makeCoreKeeperClient(getUniqueServiceName())
-
-	// Make sure the configuration not exists
-	reset()
-
-	expectedConfig := testWatchConfig
-
-	err := client.PutConfiguration(expectedConfig, true)
-	if !assert.NoError(t, err) {
-		t.Fatal()
-	}
-
-	loggingUpdateChannel := make(chan interface{})
-	errorChannel := make(chan error)
-	expectedLogLevel := "DEBUG"
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	receivedUpdate := false
-	go func() {
-		defer func() {
-			close(loggingUpdateChannel)
-			close(errorChannel)
-		}()
-		for {
-			select {
-			case <-time.After(10 * time.Second):
-				t.Fatalf("timeout waiting on Logging configuration loggingChanges")
-			case loggingChanges := <-loggingUpdateChannel:
-				assert.NotNil(t, loggingChanges)
-				logLevel := loggingChanges.(*models.WritableInfo)
-				// Now the data should have changed
-				assert.Equal(t, logLevel.LogLevel, expectedLogLevel)
-				receivedUpdate = true
-				wg.Done()
-				return
-			case watchErr := <-errorChannel:
-				t.Fatalf("received WatchForChanges error for Logging: %v", watchErr)
-				return
-			}
-		}
-	}()
-	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
-
-	expectedBytes := []byte(expectedLogLevel)
-	err = client.PutConfigurationValue("Writable/LogLevel", expectedBytes)
-	require.NoError(t, err)
-
-	wg.Wait()
-	assert.True(t, receivedUpdate)
-}
-
-func TestStopWatching(t *testing.T) {
-	client := makeCoreKeeperClient(getUniqueServiceName())
-
-	// Make sure the configuration not exists
-	reset()
-
-	expectedConfig := testWatchConfig
-
-	err := client.PutConfiguration(expectedConfig, true)
-	if !assert.NoError(t, err) {
-		t.Fatal()
-	}
-
-	loggingUpdateChannel := make(chan interface{})
-	errorChannel := make(chan error)
-	client.WatchForChanges(loggingUpdateChannel, errorChannel, &models.WritableInfo{}, "Writable")
-	allStopped := false
-	go func() {
-		client.StopWatching()
-		allStopped = true
-	}()
-
-	<-time.Tick(2 * time.Second)
-	assert.True(t, allStopped)
 }
 
 func TestConfigurationValueExists(t *testing.T) {

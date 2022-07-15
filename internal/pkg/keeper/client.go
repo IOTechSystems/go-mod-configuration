@@ -7,9 +7,12 @@ package keeper
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/rand"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
@@ -22,7 +25,11 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-const keeperTopicPrefix = "edgex/configs"
+const (
+	keeperTopicPrefix            = "edgex/configs"
+	clientID                     = "ClientId"
+	clientIDSuffixRandomInterval = 99999
+)
 
 type keeperClient struct {
 	keeperUrl      string
@@ -36,7 +43,7 @@ func NewKeeperClient(config types.ServiceConfig) *keeperClient {
 	client := keeperClient{
 		keeperUrl:      config.GetUrl(),
 		configBasePath: config.BasePath,
-		watchingDone:   make(chan bool),
+		watchingDone:   make(chan bool, 1),
 	}
 
 	client.createKeeperClient(client.keeperUrl)
@@ -158,7 +165,24 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			Messages: messages,
 		},
 	}
-	msgBusConfig := config.(*models.ConfigurationStruct).MessageQueue
+	var msgBusConfig models.MessageBusInfo
+	configStruct, ok := config.(*models.ConfigurationStruct)
+	if !ok {
+		configErr := errors.New("message bus information not defined in the configuration")
+		close(messages)
+		errorChannel <- configErr
+		return
+	}
+
+	msgBusConfig = configStruct.MessageQueue
+	if msgBusConfig.Optional != nil {
+		if clientId, ok := msgBusConfig.Optional[clientID]; ok {
+			// create unique mqtt client id to prevent missing events during subscription
+			randomSuffix := strconv.Itoa(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(clientIDSuffixRandomInterval)) // nolint:gosec
+			msgBusConfig.Optional[clientID] = clientId + "-" + randomSuffix
+		}
+	}
+
 	messageBus, err := messaging.NewMessageClient(msgTypes.MessageBusConfig{
 		SubscribeHost: msgTypes.HostInfo{
 			Host:     msgBusConfig.Host,
@@ -191,6 +215,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		defer func() {
 			_ = messageBus.Disconnect()
 		}()
+
+		isFirstUpdate := true
+
 		for {
 			select {
 			case <-client.watchingDone:
@@ -198,6 +225,14 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			case e := <-watchErrors:
 				errorChannel <- e
 			case msgEnvelope := <-messages:
+				if isFirstUpdate {
+					// send message to channel once the watcher connection is established
+					// for go-mod-bootstrap to ignore the first change event
+					// refer to https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go#L478-L484
+					isFirstUpdate = false
+					updateChannel <- "watch config change subscription established"
+					continue
+				}
 				if msgEnvelope.ContentType != http.ContentTypeJSON {
 					continue
 				}
@@ -212,6 +247,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			}
 		}
 	}()
+
+	// send empty message to the channel when the watch key change subscription established
+	messages <- msgTypes.MessageEnvelope{}
 }
 
 func (client *keeperClient) StopWatching() {
