@@ -175,6 +175,12 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 	}
 
 	msgBusConfig = configStruct.MessageQueue
+	if msgBusConfig.Host == "" || msgBusConfig.Port == 0 || msgBusConfig.Type == "" {
+		configErr := errors.New("host, port or type from MessageQueue section is not defined in the configuration")
+		close(messages)
+		errorChannel <- configErr
+		return
+	}
 	if msgBusConfig.Optional != nil {
 		if clientId, ok := msgBusConfig.Optional[clientID]; ok {
 			// create unique mqtt client id to prevent missing events during subscription
