@@ -18,4 +18,5 @@ const (
 	Flatten = "flatten"
 	Keys    = "keys"
 	Raw     = "raw"
+	Recurse = "recurse"
 )
