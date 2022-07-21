@@ -91,3 +91,16 @@ func (k *KV) PutKeys(key string, data interface{}) error {
 	}
 	return nil
 }
+
+// DeleteKeys delete all keys under a prefix with value
+func (k *KV) DeleteKeys(key string) error {
+	keyPath := path.Join(ApiKVRoute, key)
+	urlParams := url.Values{}
+	urlParams.Add(Recurse, "true")
+
+	errResp := httpUtils.DeleteRequest(nil, k.c.baseUrl, keyPath, urlParams)
+	if errResp.StatusCode != 0 {
+		return errors.New(errResp.Message)
+	}
+	return nil
+}
