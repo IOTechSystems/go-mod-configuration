@@ -168,7 +168,7 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 	var msgBusConfig models.MessageBusInfo
 	configStruct, ok := config.(*models.ConfigurationStruct)
 	if !ok {
-		configErr := errors.New("message bus information not defined in the configuration")
+		configErr := errors.New("configuration data conversion failed")
 		close(messages)
 		errorChannel <- configErr
 		return
