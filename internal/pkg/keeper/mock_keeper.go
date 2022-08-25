@@ -35,8 +35,8 @@ func (mock *MockCoreKeeper) Reset() {
 
 func (mock *MockCoreKeeper) Start() *httptest.Server {
 	testMockServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if strings.Contains(request.URL.Path, "/api/v2/kv/") {
-			key := strings.Replace(request.URL.Path, "/api/v2/kv/", "", 1)
+		if strings.Contains(request.URL.Path, api.ApiKVRoute) {
+			key := strings.Replace(request.URL.Path, api.ApiKVRoute+"/", "", 1)
 
 			switch request.Method {
 			case "PUT":
@@ -61,7 +61,7 @@ func (mock *MockCoreKeeper) Start() *httptest.Server {
 				}
 			case "GET":
 				query := request.URL.Query()
-				_, allKeysRequested := query["keys"]
+				_, allKeysRequested := query[api.KeyOnly]
 
 				var resp interface{}
 				pairs, prefixFound := mock.checkForPrefix(key)
@@ -100,7 +100,7 @@ func (mock *MockCoreKeeper) Start() *httptest.Server {
 					log.Printf("error writing data response: %s", err.Error())
 				}
 			}
-		} else if strings.Contains(request.URL.Path, "/api/v2/ping") {
+		} else if strings.Contains(request.URL.Path, api.ApiPingRoute) {
 			switch request.Method {
 			case "GET":
 				writer.WriteHeader(http.StatusOK)

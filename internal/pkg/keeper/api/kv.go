@@ -7,7 +7,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -30,9 +29,9 @@ func (c *Caller) KV() *KV {
 // to the KVPair will be nil if the key does not exist.
 func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
 	pathParams := url.Values{}
-	pathParams.Add(Raw, "true")
+	pathParams.Add(Plaintext, "true")
 
-	url := fmt.Sprintf(ApiKVRoute+"/%s", key)
+	url := path.Join(ApiKVRoute, key)
 	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
 	if errResp.StatusCode != 0 {
 		return res, errors.New(errResp.Message)
@@ -42,9 +41,9 @@ func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
 
 func (k *KV) Keys(key string) (res dtos.MultiKeyResponse, err error) {
 	pathParams := url.Values{}
-	pathParams.Add(Keys, "true")
+	pathParams.Add(KeyOnly, "true")
 
-	url := fmt.Sprintf(ApiKVRoute+"/%s", key)
+	url := path.Join(ApiKVRoute, key)
 	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
 	if errResp.StatusCode == http.StatusNotFound {
 		return res, nil
@@ -96,7 +95,7 @@ func (k *KV) PutKeys(key string, data interface{}) error {
 func (k *KV) DeleteKeys(key string) error {
 	keyPath := path.Join(ApiKVRoute, key)
 	urlParams := url.Values{}
-	urlParams.Add(Recurse, "true")
+	urlParams.Add(PrefixMatch, "true")
 
 	errResp := httpUtils.DeleteRequest(nil, k.c.baseUrl, keyPath, urlParams)
 	if errResp.StatusCode != 0 {
