@@ -8,7 +8,7 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -40,7 +40,7 @@ func (mock *MockCoreKeeper) Start() *httptest.Server {
 
 			switch request.Method {
 			case "PUT":
-				body, err := ioutil.ReadAll(request.Body)
+				body, err := io.ReadAll(request.Body)
 				if err != nil {
 					log.Printf("error reading request body: %s", err.Error())
 				}
