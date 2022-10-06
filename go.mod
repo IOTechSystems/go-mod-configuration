@@ -6,7 +6,7 @@ require (
 	github.com/mitchellh/consulstructure v0.0.0-20190329231841-56fdc4d2da54
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/pelletier/go-toml v1.9.5
-	github.com/spf13/cast v1.5.0
+	github.com/spf13/cast v1.4.1
 	github.com/stretchr/testify v1.7.1
 )
 
@@ -32,7 +32,6 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.0 // indirect
 	github.com/pebbe/zmq4 v1.2.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/stretchr/objx v0.1.1 // indirect
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158 // indirect
