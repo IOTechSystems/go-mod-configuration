@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,7 +23,7 @@ type ErrorResponse struct {
 
 // Helper method to get the body from the response after making the request
 func getBody(resp *http.Response) ([]byte, error) {
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return body, errors.New("failed to get the body from the response")
 	}
@@ -37,7 +37,7 @@ func makeRequest(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		var netErr *net.OpError
 		if errors.As(err, &netErr) {
-			return nil, errors.New(fmt.Sprintf("%s cannot be reached, this service is not available.", req.URL.Host))
+			return nil, fmt.Errorf("%s cannot be reached, this service is not available", req.URL.Host)
 		} else {
 			return nil, errors.New("failed to send a http request")
 		}
