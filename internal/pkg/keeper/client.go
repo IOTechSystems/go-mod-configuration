@@ -52,11 +52,7 @@ func (client *keeperClient) createKeeperClient(url string) {
 // IsAlive simply checks if Core Keeper is up and running at the configured URL
 func (client *keeperClient) IsAlive() bool {
 	err := client.keeperClient.Ping()
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // HasConfiguration checks to see if Consul contains the service's configuration.
@@ -240,13 +236,13 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 	//			}
 	//			keyPrefix := path.Join(client.configBasePath, waitKey)
 	//			err = decode(keyPrefix, []dtos.KV{respKV}, configuration)
+	//			if err != nil {
+	//				continue
+	//			}
 	//			updateChannel <- configuration
 	//		}
 	//	}
 	//}()
-	//
-	//// send empty message to the channel when the watch key change subscription established
-	//messages <- msgTypes.MessageEnvelope{}
 }
 
 func (client *keeperClient) StopWatching() {
