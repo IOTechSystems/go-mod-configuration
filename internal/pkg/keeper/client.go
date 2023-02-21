@@ -234,13 +234,29 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 				if msgEnvelope.ContentType != http.ContentTypeJSON {
 					continue
 				}
-				var respKV dtos.KV
-				err := json.Unmarshal(msgEnvelope.Payload, &respKV)
+				var updatedConfig dtos.KV
+				// unmarshal the updated config to KV DTO
+				err := json.Unmarshal(msgEnvelope.Payload, &updatedConfig)
 				if err != nil {
 					continue
 				}
 				keyPrefix := path.Join(client.configBasePath, waitKey)
-				err = decode(keyPrefix, []dtos.KV{respKV}, configuration)
+
+				//get the whole configs KV DTO array from Keeper with the same keyPrefix
+				kvConfigs, err := client.keeperClient.KV().Get(keyPrefix)
+
+				// check the updated key from Keeper has been updated with the same value from the message bus
+				for _, c := range kvConfigs.KVs {
+					if c.Key == updatedConfig.Key {
+						if c.Value != updatedConfig.Value {
+							continue
+						}
+						break
+					}
+				}
+
+				// decode KV DTO array to configuration struct
+				err = decode(keyPrefix, kvConfigs.KVs, configuration)
 				if err != nil {
 					continue
 				}
