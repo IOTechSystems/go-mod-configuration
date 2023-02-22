@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2023 IOTech Ltd
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -224,6 +224,7 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 		// refer to https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go#L478-L484
 		updateChannel <- "watch config change subscription established"
 
+	outerLoop:
 		for {
 			select {
 			case <-client.watchingDone:
@@ -245,14 +246,24 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 				//get the whole configs KV DTO array from Keeper with the same keyPrefix
 				kvConfigs, err := client.keeperClient.KV().Get(keyPrefix)
 
-				// check the updated key from Keeper has been updated with the same value from the message bus
+				// check the updated key and value from the message payload are valid
+				foundUpdatedKey := false
 				for _, c := range kvConfigs.KVs {
 					if c.Key == updatedConfig.Key {
+						// the updated key from the message payload has been found in Keeper
+						foundUpdatedKey = true
+						// if the updated value in the message payload is different from the one obtained by Keeper
+						// skip this subscribed message payload and continue the outer loop
 						if c.Value != updatedConfig.Value {
-							continue
+							continue outerLoop
 						}
 						break
 					}
+				}
+				// if the updated key from the message payload hasn't been found in Keeper
+				// skip this subscribed message payload
+				if !foundUpdatedKey {
+					continue
 				}
 
 				// decode KV DTO array to configuration struct
