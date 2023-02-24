@@ -7,36 +7,34 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 )
 
 // GetRequest makes the get request and return the body
-func GetRequest(returnValuePointer interface{}, baseUrl string, requestPath string, requestParams url.Values) ErrorResponse {
+func GetRequest(returnValuePointer interface{}, baseUrl string, requestPath string, requestParams url.Values) (ErrorResponse, error) {
 	req, err := createRequest(http.MethodGet, baseUrl, requestPath, requestParams)
 	if err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    err.Error(),
-		}
+		return ErrorResponse{}, err
 	}
 
-	res, errResp := sendRequest(req)
+	res, errResp, err := sendRequest(req)
+	if err != nil {
+		return ErrorResponse{}, err
+	}
 	if errResp.StatusCode != 0 {
-		return errResp
+		return errResp, nil
 	}
 	// Check the response content length to avoid json unmarshal error
 	if returnValuePointer == nil || len(res) == 0 {
-		return errResp
+		return ErrorResponse{}, nil
 	}
-	//var keyResp dtos.MultiKeyResponse
-	if err := json.Unmarshal(res, &returnValuePointer); err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    "failed to parse the response body",
-		}
+
+	if unmarshalErr := json.Unmarshal(res, &returnValuePointer); unmarshalErr != nil {
+		return ErrorResponse{}, fmt.Errorf("failed to parse the response body, err: %s", unmarshalErr.Error())
 	}
-	return errResp
+	return ErrorResponse{}, nil
 }
 
 // PutRequest makes the put JSON request and return the body
@@ -44,58 +42,51 @@ func PutRequest(
 	returnValuePointer interface{},
 	baseUrl string, requestPath string,
 	requestParams url.Values,
-	data interface{}) ErrorResponse {
+	data interface{}) (ErrorResponse, error) {
 
 	req, err := createRequestWithRawData(http.MethodPut, baseUrl, requestPath, requestParams, data)
 	if err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    err.Error(),
-		}
+		return ErrorResponse{}, err
 	}
 
-	res, errResp := sendRequest(req)
-
+	res, errResp, err := sendRequest(req)
+	if err != nil {
+		return ErrorResponse{}, err
+	}
 	if errResp.StatusCode != 0 {
-		return errResp
+		return errResp, nil
 	}
 	// no need to unmarshal the response if returnValuePointer is nil
 	if returnValuePointer == nil {
-		return ErrorResponse{}
+		return ErrorResponse{}, nil
 	}
-	if err := json.Unmarshal(res, returnValuePointer); err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    "failed to parse the response body",
-		}
+	if unmarshalErr := json.Unmarshal(res, returnValuePointer); unmarshalErr != nil {
+		return ErrorResponse{}, fmt.Errorf("failed to parse the response body, err: %s", unmarshalErr.Error())
 	}
-	return ErrorResponse{}
+	return ErrorResponse{}, nil
 }
 
-// DeleteRequest makes the get request and return the body
-func DeleteRequest(returnValuePointer interface{}, baseUrl string, requestPath string, requestParams url.Values) ErrorResponse {
+// DeleteRequest makes the delete request and return the body
+func DeleteRequest(returnValuePointer interface{}, baseUrl string, requestPath string, requestParams url.Values) (ErrorResponse, error) {
 	req, err := createRequest(http.MethodDelete, baseUrl, requestPath, requestParams)
 	if err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    err.Error(),
-		}
+		return ErrorResponse{}, err
 	}
 
-	res, errResp := sendRequest(req)
+	res, errResp, err := sendRequest(req)
+	if err != nil {
+		return ErrorResponse{}, err
+	}
 	if errResp.StatusCode != 0 {
-		return errResp
+		return errResp, nil
 	}
 	// Check the response content length to avoid json unmarshal error
 	if returnValuePointer == nil || len(res) == 0 {
-		return errResp
+		return errResp, nil
 	}
 
-	if err := json.Unmarshal(res, &returnValuePointer); err != nil {
-		return ErrorResponse{
-			StatusCode: http.StatusInternalServerError,
-			Message:    "failed to parse the response body",
-		}
+	if unmarshalErr := json.Unmarshal(res, &returnValuePointer); unmarshalErr != nil {
+		return ErrorResponse{}, fmt.Errorf("failed to parse the response body, err: %s", unmarshalErr.Error())
 	}
-	return errResp
+	return errResp, nil
 }

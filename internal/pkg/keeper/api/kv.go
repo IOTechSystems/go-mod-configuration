@@ -32,7 +32,10 @@ func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
 	pathParams.Add(Plaintext, "true")
 
 	url := path.Join(ApiKVRoute, key)
-	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	errResp, err := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	if err != nil {
+		return res, err
+	}
 	if errResp.StatusCode != 0 {
 		return res, errors.New(errResp.Message)
 	}
@@ -44,7 +47,10 @@ func (k *KV) Keys(key string) (res dtos.MultiKeyResponse, err error) {
 	pathParams.Add(KeyOnly, "true")
 
 	url := path.Join(ApiKVRoute, key)
-	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	errResp, err := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	if err != nil {
+		return res, err
+	}
 	if errResp.StatusCode == http.StatusNotFound {
 		return res, nil
 	}
@@ -65,7 +71,10 @@ func (k *KV) Put(key string, data interface{}) error {
 	request := dtos.AddKeysRequest{
 		Value: value,
 	}
-	errResp := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, nil, request)
+	errResp, err := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, nil, request)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}
@@ -84,7 +93,10 @@ func (k *KV) PutKeys(key string, data interface{}) error {
 	request := dtos.AddKeysRequest{
 		Value: value,
 	}
-	errResp := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, urlParams, request)
+	errResp, err := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, urlParams, request)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}
@@ -97,7 +109,10 @@ func (k *KV) DeleteKeys(key string) error {
 	urlParams := url.Values{}
 	urlParams.Add(PrefixMatch, "true")
 
-	errResp := httpUtils.DeleteRequest(nil, k.c.baseUrl, keyPath, urlParams)
+	errResp, err := httpUtils.DeleteRequest(nil, k.c.baseUrl, keyPath, urlParams)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}
