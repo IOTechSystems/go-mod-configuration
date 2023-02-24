@@ -66,12 +66,12 @@ func createRequest(httpMethod string, baseUrl string, requestPath string, reques
 
 // sendRequest will make a request with raw data to the specified URL.
 // It returns the body as a byte array if successful and an error otherwise.
-func sendRequest(req *http.Request) ([]byte, ErrorResponse) {
+func sendRequest(req *http.Request) ([]byte, ErrorResponse, error) {
 	var errResponse ErrorResponse
 
 	resp, err := makeRequest(req)
 	if err != nil {
-		return nil, errResponse
+		return nil, errResponse, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -79,20 +79,20 @@ func sendRequest(req *http.Request) ([]byte, ErrorResponse) {
 
 	bodyBytes, err := getBody(resp)
 	if err != nil {
-		return nil, errResponse
+		return nil, errResponse, err
 	}
 
 	if resp.StatusCode <= http.StatusMultiStatus {
-		return bodyBytes, errResponse
+		return bodyBytes, errResponse, nil
 	}
 
 	// Handle error response
-	e := json.Unmarshal(bodyBytes, &errResponse)
-	if e != nil {
-		return nil, errResponse
+	err = json.Unmarshal(bodyBytes, &errResponse)
+	if err != nil {
+		return nil, errResponse, err
 	}
 
-	return nil, errResponse
+	return nil, errResponse, nil
 }
 
 func createRequestWithRawData(httpMethod string, baseUrl string, requestPath string, requestParams url.Values, data interface{}) (*http.Request, error) {
