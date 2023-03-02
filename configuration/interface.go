@@ -1,5 +1,6 @@
 //
 // Copyright (c) 2019 Intel Corporation
+// Copyright (C) 2023 IOTech Ltd
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +18,8 @@
 package configuration
 
 import (
+	"github.com/edgexfoundry/go-mod-messaging/v2/messaging"
+
 	"github.com/pelletier/go-toml"
 )
 
@@ -41,7 +44,7 @@ type Client interface {
 	// WatchForChanges sets up a Consul watch for the target key and send back updates on the update channel.
 	// Passed in struct is only a reference for Configuration service, empty struct is ok
 	// Sends the configuration in the target struct as interface{} on updateChannel, which caller must cast
-	WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string)
+	WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string, msgClient messaging.MessageClient)
 
 	// StopWatching causes all WatchForChanges processing to stop and waits until they have stopped.
 	StopWatching()

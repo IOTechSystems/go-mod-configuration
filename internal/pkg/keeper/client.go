@@ -9,14 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"path"
 	"strconv"
-	"time"
 
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
 	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
 	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 
@@ -27,9 +24,7 @@ import (
 )
 
 const (
-	keeperTopicPrefix            = "edgex/configs"
-	clientID                     = "ClientId"
-	clientIDSuffixRandomInterval = 99999
+	keeperTopicPrefix = "edgex/configs"
 )
 
 type keeperClient struct {
@@ -146,11 +141,10 @@ func (client *keeperClient) GetConfiguration(configStruct interface{}) (interfac
 	return configStruct, nil
 }
 
-func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
-	// get the service configuration
-	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
-	if err != nil {
-		errorChannel <- err
+func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string, messageBus messaging.MessageClient) {
+	if messageBus == nil {
+		configErr := errors.New("unable to use MessageClient to watch for configuration changes")
+		errorChannel <- configErr
 		return
 	}
 
@@ -162,52 +156,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			Messages: messages,
 		},
 	}
-	var msgBusConfig models.MessageBusInfo
-	configStruct, ok := config.(*models.ConfigurationStruct)
-	if !ok {
-		configErr := errors.New("configuration data conversion failed")
-		close(messages)
-		errorChannel <- configErr
-		return
-	}
 
-	msgBusConfig = configStruct.MessageQueue
-	if msgBusConfig.Host == "" || msgBusConfig.Port == 0 || msgBusConfig.Type == "" {
-		configErr := errors.New("host, port or type from MessageQueue section is not defined in the configuration")
-		close(messages)
-		errorChannel <- configErr
-		return
-	}
-	if msgBusConfig.Optional != nil {
-		if clientId, ok := msgBusConfig.Optional[clientID]; ok {
-			// create unique mqtt client id to prevent missing events during subscription
-			randomSuffix := strconv.Itoa(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(clientIDSuffixRandomInterval)) // nolint:gosec
-			msgBusConfig.Optional[clientID] = clientId + "-" + randomSuffix
-		}
-	}
-
-	messageBus, err := messaging.NewMessageClient(msgTypes.MessageBusConfig{
-		SubscribeHost: msgTypes.HostInfo{
-			Host:     msgBusConfig.Host,
-			Port:     msgBusConfig.Port,
-			Protocol: msgBusConfig.Protocol,
-		},
-		Type:     msgBusConfig.Type,
-		Optional: msgBusConfig.Optional,
-	})
-	if err != nil {
-		close(messages)
-		errorChannel <- err
-		return
-	}
-	// connect to the message bus
-	if conErr := messageBus.Connect(); conErr != nil {
-		close(messages)
-		errorChannel <- conErr
-		return
-	}
 	watchErrors := make(chan error)
-	err = messageBus.Subscribe(topics, watchErrors)
+	err := messageBus.Subscribe(topics, watchErrors)
 	if err != nil {
 		_ = messageBus.Disconnect()
 		errorChannel <- err
@@ -245,6 +196,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 
 				//get the whole configs KV DTO array from Keeper with the same keyPrefix
 				kvConfigs, err := client.keeperClient.KV().Get(keyPrefix)
+				if err != nil {
+					continue
+				}
 
 				// check the updated key and value from the message payload are valid
 				foundUpdatedKey := false
