@@ -1,6 +1,6 @@
 module github.com/edgexfoundry/go-mod-configuration/v2
 
-go 1.18
+go 1.19
 
 require (
 	github.com/edgexfoundry/go-mod-messaging/v2 v2.3.0
