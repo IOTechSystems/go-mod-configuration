@@ -194,30 +194,33 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 				}
 				keyPrefix := path.Join(client.configBasePath, waitKey)
 
-				//get the whole configs KV DTO array from Keeper with the same keyPrefix
+				// get the whole configs KV DTO array from Keeper with the same keyPrefix
 				kvConfigs, err := client.keeperClient.KV().Get(keyPrefix)
 				if err != nil {
 					continue
 				}
 
-				// check the updated key and value from the message payload are valid
-				foundUpdatedKey := false
-				for _, c := range kvConfigs.KVs {
-					if c.Key == updatedConfig.Key {
-						// the updated key from the message payload has been found in Keeper
-						foundUpdatedKey = true
-						// if the updated value in the message payload is different from the one obtained by Keeper
-						// skip this subscribed message payload and continue the outer loop
-						if c.Value != updatedConfig.Value {
-							continue outerLoop
+				// if the updated key not equal to keyPrefix, need to check the updated key and value from the message payload are valid
+				// e.g. keyPrefix = "edgex/core/2.0/core-data/Writable" which is the root level of Writable configuration
+				if updatedConfig.Key != keyPrefix {
+					foundUpdatedKey := false
+					for _, c := range kvConfigs.KVs {
+						if c.Key == updatedConfig.Key {
+							// the updated key from the message payload has been found in Keeper
+							foundUpdatedKey = true
+							// if the updated value in the message payload is different from the one obtained by Keeper
+							// skip this subscribed message payload and continue the outer loop
+							if c.Value != updatedConfig.Value {
+								continue outerLoop
+							}
+							break
 						}
-						break
 					}
-				}
-				// if the updated key from the message payload hasn't been found in Keeper
-				// skip this subscribed message payload
-				if !foundUpdatedKey {
-					continue
+					// if the updated key from the message payload hasn't been found in Keeper
+					// skip this subscribed message payload
+					if !foundUpdatedKey {
+						continue
+					}
 				}
 
 				// decode KV DTO array to configuration struct
