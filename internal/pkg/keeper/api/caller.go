@@ -8,7 +8,7 @@ package api
 import (
 	"errors"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/utils/http"
 )
 
 type Caller struct {
@@ -23,7 +23,10 @@ func NewCaller(baseUrl string) *Caller {
 }
 
 func (c *Caller) Ping() error {
-	errResp := http.GetRequest(nil, c.baseUrl, ApiPingRoute, nil)
+	errResp, err := http.GetRequest(nil, c.baseUrl, ApiPingRoute, nil)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}

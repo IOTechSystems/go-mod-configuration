@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
 
 	"github.com/pelletier/go-toml"
 	"github.com/stretchr/testify/assert"
@@ -41,6 +41,7 @@ type TestConfig struct {
 	Port     int
 	Host     string
 	LogLevel string
+	Temp     float64
 }
 
 func makeCoreKeeperClient(serviceName string) *keeperClient {
@@ -65,10 +66,17 @@ func configValueExists(key string, client *keeperClient) bool {
 
 var mockCoreKeeper *MockCoreKeeper
 
-func reset() {
+func reset(t *testing.T, client *keeperClient) {
 	// Make sure the configuration not exists
 	if mockCoreKeeper != nil {
 		mockCoreKeeper.Reset()
+	} else {
+		// delete the key(s) created in each test if testing on real Keeper service
+		key := client.configBasePath
+		err := client.keeperClient.KV().DeleteKeys(key)
+		if !assert.NoError(t, err) {
+			t.Fatal()
+		}
 	}
 }
 
@@ -99,9 +107,6 @@ func TestIsAlive(t *testing.T) {
 func TestHasConfigurationFalse(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
-
 	actual, err := client.HasConfiguration()
 	if !assert.NoError(t, err) {
 		t.Fatal()
@@ -112,8 +117,8 @@ func TestHasConfigurationFalse(t *testing.T) {
 func TestHasConfigurationTrue(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	err := client.PutConfiguration(dummyConfig, true)
 	if !assert.NoError(t, err) {
@@ -130,9 +135,6 @@ func TestHasConfigurationTrue(t *testing.T) {
 func TestHasSubConfigurationFalse(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
-
 	actual, err := client.HasSubConfiguration(dummyConfig)
 	if !assert.NoError(t, err) {
 		t.Fatal()
@@ -143,8 +145,8 @@ func TestHasSubConfigurationFalse(t *testing.T) {
 func TestHasSubConfigurationTrue(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	_ = client.PutConfigurationValue(dummyConfig, []byte(dummyConfig))
 
@@ -171,8 +173,8 @@ func createConfigMap() map[string]interface{} {
 func TestPutConfigurationTomlNoPreValues(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	configMap := createConfigMap()
 	configToml, err := toml.TreeFromMap(configMap)
@@ -189,8 +191,8 @@ func TestPutConfigurationTomlNoPreValues(t *testing.T) {
 func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	configMap := createConfigMap()
 	configToml, err := toml.TreeFromMap(configMap)
@@ -231,8 +233,8 @@ func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
 func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	configMap := createConfigMap()
 	configToml, err := toml.TreeFromMap(configMap)
@@ -273,8 +275,8 @@ func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
 func TestPutConfiguration(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	expected := TestConfig{
 		Logging: LoggingInfo{
@@ -284,6 +286,7 @@ func TestPutConfiguration(t *testing.T) {
 		Port:     8000,
 		Host:     "localhost",
 		LogLevel: "debug",
+		Temp:     36.123456,
 	}
 	err := client.PutConfiguration(expected, true)
 	if !assert.NoErrorf(t, err, "unable to put configuration: %v", err) {
@@ -301,13 +304,14 @@ func TestPutConfiguration(t *testing.T) {
 	assert.True(t, configValueExists("Port", client))
 	assert.True(t, configValueExists("Host", client))
 	assert.True(t, configValueExists("LogLevel", client))
+	assert.True(t, configValueExists("Temp", client))
 }
 
 func TestGetConfiguration(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	expected := TestConfig{
 		Logging: LoggingInfo{
@@ -317,6 +321,7 @@ func TestGetConfiguration(t *testing.T) {
 		Port:     8000,
 		Host:     "localhost",
 		LogLevel: "debug",
+		Temp:     36.123456,
 	}
 
 	err := client.PutConfiguration(expected, true)
@@ -340,13 +345,14 @@ func TestGetConfiguration(t *testing.T) {
 	assert.Equal(t, expected.Port, actual.Port, "Port not as expected")
 	assert.Equal(t, expected.Host, actual.Host, "Host not as expected")
 	assert.Equal(t, expected.LogLevel, actual.LogLevel, "LogLevel not as expected")
+	assert.Equal(t, expected.Temp, actual.Temp, "Temp not as expected")
 }
 
 func TestConfigurationValueExists(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	key := "Foo"
 	value := []byte("bar")
@@ -375,8 +381,8 @@ func TestConfigurationValueExists(t *testing.T) {
 func TestGetConfigurationValue(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	key := "Foo"
 	expected := []byte("bar")
@@ -395,8 +401,8 @@ func TestGetConfigurationValue(t *testing.T) {
 func TestPutConfigurationValue(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
-	// Make sure the configuration not exists
-	reset()
+	// delete the configuration created
+	defer reset(t, client)
 
 	key := "Foo"
 	expected := []byte("bar")

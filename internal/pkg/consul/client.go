@@ -1,5 +1,6 @@
 //
 // Copyright (c) 2023 Intel Corporation
+// Copyright (C) 2023 IOTech Ltd
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +29,9 @@ import (
 	"time"
 
 	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
+
+	"github.com/edgexfoundry/go-mod-messaging/v3/messaging"
+
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/mitchellh/consulstructure"
 )
@@ -230,7 +234,7 @@ func (client *consulClient) GetConfiguration(configStruct interface{}) (interfac
 // WatchForChanges sets up a Consul watch for the target key and send back updates on the update channel.
 // Passed in struct is only a reference for decoder, empty struct is ok
 // Sends the configuration in the target struct as interface{} on updateChannel, which caller must cast
-func (client *consulClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, watchKey string) {
+func (client *consulClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, watchKey string, _ messaging.MessageClient) {
 	// some watch keys may have start with "/", need to remove it since the base path already has it.
 	if strings.Index(watchKey, "/") == 0 {
 		watchKey = watchKey[1:]
