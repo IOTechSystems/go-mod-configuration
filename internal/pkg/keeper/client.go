@@ -252,7 +252,38 @@ func (client *keeperClient) ConfigurationValueExists(name string) (bool, error) 
 
 func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	keyPath := client.fullPath(name)
-	resp, err := client.keeperClient.KV().Get(keyPath)
+	return client.GetConfigurationValueByFullPath(keyPath)
+}
+
+func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
+	keyPath := client.fullPath(name)
+	err := client.keeperClient.KV().Put(keyPath, value)
+	if err != nil {
+		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
+	}
+	return nil
+}
+
+func (client *keeperClient) PutConfigurationMap(configuration map[string]any, overwrite bool) error {
+
+	keyValues := convertInterfaceToPairs("", configuration)
+
+	// Put config properties into Consul.
+	for _, keyValue := range keyValues {
+		exists, _ := client.ConfigurationValueExists(keyValue.Key)
+		if !exists || overwrite {
+			if err := client.PutConfigurationValue(keyValue.Key, []byte(keyValue.Value)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetConfigurationValueByFullPath gets a specific configuration value given the full path from Consul
+func (client *keeperClient) GetConfigurationValueByFullPath(name string) ([]byte, error) {
+	resp, err := client.keeperClient.KV().Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -294,11 +325,6 @@ func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	return []byte(valueStr), nil
 }
 
-func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
-	keyPath := client.fullPath(name)
-	err := client.keeperClient.KV().Put(keyPath, value)
-	if err != nil {
-		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
-	}
-	return nil
+func (client *keeperClient) GetConfigurationKeys(name string) ([]string, error) {
+	return nil, fmt.Errorf("GetConfigurationKeys not implemented")
 }

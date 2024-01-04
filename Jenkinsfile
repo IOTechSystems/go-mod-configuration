@@ -6,5 +6,5 @@
 
 goModVersionTag(
     project: "go-mod-configuration",
-    version: "2.3"
+    version: "3.1"
 )
