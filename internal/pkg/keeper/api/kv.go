@@ -7,13 +7,12 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
-	httpUtils "github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/dtos"
+	httpUtils "github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/utils/http"
 )
 
 // KV is used to manipulate the K/V API
@@ -30,10 +29,13 @@ func (c *Caller) KV() *KV {
 // to the KVPair will be nil if the key does not exist.
 func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
 	pathParams := url.Values{}
-	pathParams.Add(Raw, "true")
+	pathParams.Add(Plaintext, "true")
 
-	url := fmt.Sprintf(ApiKVRoute+"/%s", key)
-	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	url := path.Join(ApiKVRoute, key)
+	errResp, err := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	if err != nil {
+		return res, err
+	}
 	if errResp.StatusCode != 0 {
 		return res, errors.New(errResp.Message)
 	}
@@ -42,10 +44,13 @@ func (k *KV) Get(key string) (res dtos.MultiKVResponse, err error) {
 
 func (k *KV) Keys(key string) (res dtos.MultiKeyResponse, err error) {
 	pathParams := url.Values{}
-	pathParams.Add(Keys, "true")
+	pathParams.Add(KeyOnly, "true")
 
-	url := fmt.Sprintf(ApiKVRoute+"/%s", key)
-	errResp := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	url := path.Join(ApiKVRoute, key)
+	errResp, err := httpUtils.GetRequest(&res, k.c.baseUrl, url, pathParams)
+	if err != nil {
+		return res, err
+	}
 	if errResp.StatusCode == http.StatusNotFound {
 		return res, nil
 	}
@@ -66,7 +71,10 @@ func (k *KV) Put(key string, data interface{}) error {
 	request := dtos.AddKeysRequest{
 		Value: value,
 	}
-	errResp := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, nil, request)
+	errResp, err := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, nil, request)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}
@@ -85,7 +93,26 @@ func (k *KV) PutKeys(key string, data interface{}) error {
 	request := dtos.AddKeysRequest{
 		Value: value,
 	}
-	errResp := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, urlParams, request)
+	errResp, err := httpUtils.PutRequest(nil, k.c.baseUrl, keyPath, urlParams, request)
+	if err != nil {
+		return err
+	}
+	if errResp.StatusCode != 0 {
+		return errors.New(errResp.Message)
+	}
+	return nil
+}
+
+// DeleteKeys delete all keys under a prefix with value
+func (k *KV) DeleteKeys(key string) error {
+	keyPath := path.Join(ApiKVRoute, key)
+	urlParams := url.Values{}
+	urlParams.Add(PrefixMatch, "true")
+
+	errResp, err := httpUtils.DeleteRequest(nil, k.c.baseUrl, keyPath, urlParams)
+	if err != nil {
+		return err
+	}
 	if errResp.StatusCode != 0 {
 		return errors.New(errResp.Message)
 	}

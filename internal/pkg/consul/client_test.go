@@ -1,5 +1,6 @@
 //
-// Copyright (c) 2021 Intel Corporation
+// Copyright (c) 2023 Intel Corporation
+// Copyright (C) 2023 IOTech Ltd
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +19,6 @@ package consul
 
 import (
 	"fmt"
-	"log"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -29,11 +29,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/pelletier/go-toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
 )
 
 const (
@@ -90,10 +89,10 @@ func TestIsAlive(t *testing.T) {
 func TestHasConfigurationFalse(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
-	// Don't push anything in yet so configuration will not exists
+	// Don't push anything in yet so configuration will not exist
 
 	actual, err := client.HasConfiguration()
 	if !assert.NoError(t, err) {
@@ -106,7 +105,7 @@ func TestHasConfigurationFalse(t *testing.T) {
 func TestHasConfigurationTrue(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	// Now push a value so the configuration will exist
@@ -123,7 +122,7 @@ func TestHasConfigurationTrue(t *testing.T) {
 func TestHasConfigurationPartialServiceKey(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	base := client.configBasePath
@@ -166,7 +165,7 @@ func TestHasConfigurationError(t *testing.T) {
 func TestHasSubConfigurationFalse(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	// Now push a value so some configuration will exist
@@ -183,7 +182,7 @@ func TestHasSubConfigurationFalse(t *testing.T) {
 func TestHasSubConfigurationTrue(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	// Now push a value so some configuration will exist
@@ -221,7 +220,7 @@ func TestConfigurationValueExists(t *testing.T) {
 	client := makeConsulClient(t, uniqueServiceName, "", nil)
 	expected := false
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	actual, err := client.ConfigurationValueExists(key)
@@ -279,6 +278,29 @@ func TestGetConfigurationValue(t *testing.T) {
 	}
 }
 
+func TestGetConfigurationValueByFullPath(t *testing.T) {
+	key := "Foo"
+	expected := []byte("bar")
+	uniqueServiceName := getUniqueServiceName()
+	fullKey := consulBasePath + uniqueServiceName + "/" + key
+	client := makeConsulClient(t, uniqueServiceName, "", nil)
+
+	// Make sure the target key/value exists
+	keyPair := api.KVPair{
+		Key:   fullKey,
+		Value: expected,
+	}
+
+	_, err := client.consulClient.KV().Put(&keyPair, nil)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	actual, err := client.GetConfigurationValueByFullPath(fullKey)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+}
+
 func TestPutConfigurationValue(t *testing.T) {
 	key := "Foo"
 	expected := []byte("bar")
@@ -287,7 +309,7 @@ func TestPutConfigurationValue(t *testing.T) {
 
 	client := makeConsulClient(t, uniqueServiceName, "", nil)
 
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	reset(t, client)
 
 	_, _ = client.consulClient.KV().Delete(expectedFullKey, nil)
@@ -391,7 +413,7 @@ func configValueSet(key string, client *consulClient) bool {
 	return exists
 }
 
-func TestPutConfigurationTomlNoPreviousValues(t *testing.T) {
+func TestPutConfigurationMapNoPreviousValues(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
 	// Make sure the tree of values doesn't exist.
@@ -403,11 +425,7 @@ func TestPutConfigurationTomlNoPreviousValues(t *testing.T) {
 	}()
 
 	configMap := createKeyValueMap()
-	configuration, err := toml.TreeFromMap(configMap)
-	if err != nil {
-		log.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-	err = client.PutConfigurationToml(configuration, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -426,7 +444,7 @@ func TestPutConfigurationTomlNoPreviousValues(t *testing.T) {
 	}
 }
 
-func TestPutConfigurationTomlWithoutOverWrite(t *testing.T) {
+func TestPutConfigurationMapWithoutOverWrite(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
 	// Make sure the tree of values doesn't exist.
@@ -439,8 +457,7 @@ func TestPutConfigurationTomlWithoutOverWrite(t *testing.T) {
 
 	configMap := createKeyValueMap()
 
-	configuration, _ := toml.TreeFromMap(configMap)
-	err := client.PutConfigurationToml(configuration, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -451,10 +468,15 @@ func TestPutConfigurationTomlWithoutOverWrite(t *testing.T) {
 	configMap["float64"] = 2.4
 	configMap["string"] = "bye"
 	configMap["bool"] = false
+	subMap := configMap["sub-map"].(map[string]any)
+	subMap["int"] = 45
+	subMap["int64"] = 789
+	subMap["float64"] = 23.45
+	subMap["string"] = "another value"
+	subMap["bool"] = true
 
 	// Try to put new values with overwrite = false
-	configuration, _ = toml.TreeFromMap(configMap)
-	err = client.PutConfigurationToml(configuration, false)
+	err = client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -473,7 +495,7 @@ func TestPutConfigurationTomlWithoutOverWrite(t *testing.T) {
 	}
 }
 
-func TestPutConfigurationTomlOverWrite(t *testing.T) {
+func TestPutConfigurationMapOverWrite(t *testing.T) {
 	client := makeConsulClient(t, getUniqueServiceName(), "", nil)
 
 	// Make sure the tree of values doesn't exist.
@@ -485,8 +507,7 @@ func TestPutConfigurationTomlOverWrite(t *testing.T) {
 
 	configMap := createKeyValueMap()
 
-	configuration, _ := toml.TreeFromMap(configMap)
-	err := client.PutConfigurationToml(configuration, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -498,8 +519,7 @@ func TestPutConfigurationTomlOverWrite(t *testing.T) {
 	configMap["bool"] = false
 
 	// Try to put new values with overwrite = True
-	configuration, _ = toml.TreeFromMap(configMap)
-	err = client.PutConfigurationToml(configuration, true)
+	err = client.PutConfigurationMap(configMap, true)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -549,7 +569,7 @@ func TestWatchForChanges(t *testing.T) {
 	loggingUpdateChannel := make(chan interface{})
 	errorChannel := make(chan error)
 
-	client.WatchForChanges(loggingUpdateChannel, errorChannel, &LoggingInfo{}, "Logging")
+	client.WatchForChanges(loggingUpdateChannel, errorChannel, &LoggingInfo{}, "Logging", nil)
 
 	loggingPass := 1
 
@@ -562,7 +582,7 @@ func TestWatchForChanges(t *testing.T) {
 			assert.NotNil(t, loggingChanges)
 			logInfo := loggingChanges.(*LoggingInfo)
 
-			// first pass is for Consul Decoder always sending data once watch has been setup. It hasn't actually changed
+			// first pass is for Consul Decoder always sending data once watch has been set up. It hasn't actually changed
 			if loggingPass == 1 {
 				if !assert.Equal(t, logInfo.File, expectedConfig.Logging.File) {
 					t.Fatal()
@@ -590,7 +610,7 @@ func TestAccessToken(t *testing.T) {
 	client := makeConsulClient(t, uniqueServiceName, "", nil)
 	expectedErrMsg := "Unexpected response code: 403"
 	valueName := "testAccess"
-	// Test if have access to endpoint w/o access token set
+	// Test if there is access to endpoint w/o access token set
 
 	_, err := client.GetConfigurationValue(valueName)
 	require.NoError(t, err)
@@ -603,6 +623,29 @@ func TestAccessToken(t *testing.T) {
 	_, err = client.GetConfigurationValue(valueName)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), expectedErrMsg)
+}
+
+func TestGetConfigurationKeys(t *testing.T) {
+	key := "foo"
+	uniqueServiceName := getUniqueServiceName()
+	fullKey := consulBasePath + uniqueServiceName + "/Writable/" + key
+	client := makeConsulClient(t, uniqueServiceName, "", nil)
+
+	// Make sure the target key/value exists
+	keyPair := api.KVPair{
+		Key:   fullKey,
+		Value: []byte("bar"),
+	}
+
+	_, err := client.consulClient.KV().Put(&keyPair, nil)
+	if !assert.NoError(t, err) {
+		t.Fatal()
+	}
+
+	actual, err := client.GetConfigurationKeys("Writable")
+	require.NoError(t, err)
+	require.NotEmpty(t, actual)
+	require.Equal(t, []string{fullKey}, actual)
 }
 
 func makeConsulClient(t *testing.T, serviceName string, accessToken string, tokenCallback types.GetAccessTokenCallback) *consulClient {
@@ -622,20 +665,27 @@ func makeConsulClient(t *testing.T, serviceName string, accessToken string, toke
 	return client
 }
 
-func createKeyValueMap() map[string]interface{} {
-	configMap := make(map[string]interface{})
+func createKeyValueMap() map[string]any {
+	configMap := make(map[string]any)
 
 	configMap["int"] = 1
 	configMap["int64"] = int64(64)
-	configMap["float64"] = float64(1.4)
+	configMap["float64"] = 1.4
 	configMap["string"] = "hello"
 	configMap["bool"] = true
+	configMap["sub-map"] = map[string]any{
+		"string":  "some value",
+		"bool":    false,
+		"int":     6,
+		"int64":   int64(34),
+		"float64": 6.3,
+	}
 
 	return configMap
 }
 
 func reset(t *testing.T, client *consulClient) {
-	// Make sure the configuration doesn't already exists
+	// Make sure the configuration doesn't already exist
 	if mockConsul != nil {
 		mockConsul.Reset()
 	} else {
@@ -751,7 +801,7 @@ func TestRenewAccessToken(t *testing.T) {
 
 		updates := make(chan interface{})
 		errs := make(chan error)
-		client.WatchForChanges(updates, errs, &myConfig, "Logging")
+		client.WatchForChanges(updates, errs, &myConfig, "Logging", nil)
 
 		wg := sync.WaitGroup{}
 		wg.Add(1)
@@ -794,8 +844,8 @@ func TestRenewAccessToken(t *testing.T) {
 		allStopped := false
 		updates := make(chan interface{})
 		errs := make(chan error)
-		client.WatchForChanges(updates, errs, &myConfig, "Host")
-		client.WatchForChanges(updates, errs, &myConfig, "LogLevel")
+		client.WatchForChanges(updates, errs, &myConfig, "Host", nil)
+		client.WatchForChanges(updates, errs, &myConfig, "LogLevel", nil)
 
 		go func() {
 			client.StopWatching()

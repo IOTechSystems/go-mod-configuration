@@ -1,5 +1,6 @@
 //
-// Copyright (c) 2021 Intel Corporation
+// Copyright (c) 2023 Intel Corporation
+// Copyright (C) 2023 IOTech Ltd
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@ package consul
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,11 +28,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
+
+	"github.com/edgexfoundry/go-mod-messaging/v3/messaging"
+
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/mitchellh/consulstructure"
-	"github.com/pelletier/go-toml"
-
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 )
 
 const (
@@ -140,11 +143,11 @@ func (client *consulClient) HasSubConfiguration(name string) (bool, error) {
 	return true, nil
 }
 
-// PutConfigurationToml puts a full toml configuration into Consul
-func (client *consulClient) PutConfigurationToml(configuration *toml.Tree, overwrite bool) error {
+// PutConfigurationMap puts a full configuration map into Consul.
+// The sub-paths to where the values are to be stored in Consul are generated from the map key.
+func (client *consulClient) PutConfigurationMap(configuration map[string]any, overwrite bool) error {
 
-	configurationMap := configuration.ToMap()
-	keyValues := convertInterfaceToConsulPairs("", configurationMap)
+	keyValues := convertInterfaceToConsulPairs("", configuration)
 
 	// Put config properties into Consul.
 	for _, keyValue := range keyValues {
@@ -161,17 +164,18 @@ func (client *consulClient) PutConfigurationToml(configuration *toml.Tree, overw
 
 // PutConfiguration puts a full configuration struct into the Configuration provider
 func (client *consulClient) PutConfiguration(configuration interface{}, overwrite bool) error {
-	bytes, err := toml.Marshal(configuration)
+	configMap := make(map[string]any)
+	bytes, err := json.Marshal(configuration)
 	if err != nil {
 		return err
 	}
 
-	tree, err := toml.LoadBytes(bytes)
+	err = json.Unmarshal(bytes, &configMap)
 	if err != nil {
 		return err
 	}
 
-	err = client.PutConfigurationToml(tree, overwrite)
+	err = client.PutConfigurationMap(configMap, overwrite)
 	if err != nil {
 		return err
 	}
@@ -230,7 +234,7 @@ func (client *consulClient) GetConfiguration(configStruct interface{}) (interfac
 // WatchForChanges sets up a Consul watch for the target key and send back updates on the update channel.
 // Passed in struct is only a reference for decoder, empty struct is ok
 // Sends the configuration in the target struct as interface{} on updateChannel, which caller must cast
-func (client *consulClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, watchKey string) {
+func (client *consulClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, watchKey string, _ messaging.MessageClient) {
 	// some watch keys may have start with "/", need to remove it since the base path already has it.
 	if strings.Index(watchKey, "/") == 0 {
 		watchKey = watchKey[1:]
@@ -293,17 +297,38 @@ func (client *consulClient) ConfigurationValueExists(name string) (bool, error) 
 }
 
 // GetConfigurationValue gets a specific configuration value from Consul
-func (client *consulClient) GetConfigurationValue(name string) ([]byte, error) {
-	keyPair, _, err := client.consulClient.KV().Get(client.fullPath(name), nil)
+func (client *consulClient) GetConfigurationValue(fullPath string) ([]byte, error) {
+	keyPair, _, err := client.consulClient.KV().Get(client.fullPath(fullPath), nil)
 
 	retry, err := client.reloadAccessTokenOnAuthError(err)
 	if retry {
 		// Try again with new Access Token
-		keyPair, _, err = client.consulClient.KV().Get(client.fullPath(name), nil)
+		keyPair, _, err = client.consulClient.KV().Get(client.fullPath(fullPath), nil)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("unable to get value for %s from Consul: %v", client.fullPath(name), err)
+		return nil, fmt.Errorf("unable to get value for %s from Consul: %v", client.fullPath(fullPath), err)
+	}
+
+	if keyPair == nil {
+		return nil, nil
+	}
+
+	return keyPair.Value, nil
+}
+
+// GetConfigurationValueByFullPath gets a specific configuration value given the full path from Consul
+func (client *consulClient) GetConfigurationValueByFullPath(name string) ([]byte, error) {
+	keyPair, _, err := client.consulClient.KV().Get(name, nil)
+
+	retry, err := client.reloadAccessTokenOnAuthError(err)
+	if retry {
+		// Try again with new Access Token
+		keyPair, _, err = client.consulClient.KV().Get(name, nil)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to get value for %s from Consul: %v", name, err)
 	}
 
 	if keyPair == nil {
@@ -333,6 +358,30 @@ func (client *consulClient) PutConfigurationValue(name string, value []byte) err
 	}
 
 	return nil
+}
+
+func (client *consulClient) GetConfigurationKeys(name string) ([]string, error) {
+	keyPairs, _, err := client.consulClient.KV().List(client.fullPath(name), nil)
+
+	retry, err := client.reloadAccessTokenOnAuthError(err)
+	if retry {
+		// Try again with new Access Token
+		keyPairs, _, err = client.consulClient.KV().List(client.fullPath(name), nil)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to get list of keys for %s from Consul: %v", client.fullPath(name), err)
+	}
+
+	if keyPairs == nil {
+		return nil, nil
+	}
+	var list []string
+	for _, v := range keyPairs {
+		list = append(list, v.Key)
+	}
+
+	return list, nil
 }
 
 func (client *consulClient) reloadAccessTokenOnAuthError(err error) (bool, error) {

@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/api"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/dtos"
 
 	"github.com/mitchellh/mapstructure"
 )

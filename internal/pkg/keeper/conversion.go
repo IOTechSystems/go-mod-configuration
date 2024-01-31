@@ -6,10 +6,11 @@
 package keeper
 
 import (
-	"fmt"
 	"strconv"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/api"
+
+	"github.com/spf13/cast"
 )
 
 type pair struct {
@@ -36,32 +37,52 @@ func convertMapToKVPairs(path string, interfaceMap interface{}) []*pair {
 			nextPairs := convertMapToKVPairs(pathPre+index, item)
 			pairs = append(pairs, nextPairs...)
 		}
-	case string:
-		pairs = append(pairs, &pair{Key: path, Value: value})
+	default:
+		pairs = append(pairs, &pair{Key: path, Value: cast.ToString(value)})
+	}
+
+	return pairs
+}
+
+func convertInterfaceToPairs(path string, interfaceMap any) []*pair {
+	pairs := make([]*pair, 0)
+
+	pathPre := ""
+	if path != "" {
+		pathPre = path + "/"
+	}
+
+	switch value := interfaceMap.(type) {
+	case []interface{}:
+		for index, item := range value {
+			nextPairs := convertInterfaceToPairs(pathPre+strconv.Itoa(index), item)
+			pairs = append(pairs, nextPairs...)
+		}
+
+	case map[string]any:
+		for index, item := range value {
+			nextPairs := convertInterfaceToPairs(pathPre+index, item)
+			pairs = append(pairs, nextPairs...)
+		}
+
 	case int:
 		pairs = append(pairs, &pair{Key: path, Value: strconv.Itoa(value)})
-	case int8:
-		value8 := int(value)
-		pairs = append(pairs, &pair{Key: path, Value: strconv.Itoa(value8)})
-	case int16:
-		value16 := int(value)
-		pairs = append(pairs, &pair{Key: path, Value: strconv.Itoa(value16)})
-	case int32:
-		value32 := int(value)
-		pairs = append(pairs, &pair{Key: path, Value: strconv.Itoa(value32)})
+
 	case int64:
-		pairs = append(pairs, &pair{Key: path, Value: strconv.FormatInt(value, 10)})
-	case float32:
-		valueF64 := float64(value)
-		pairs = append(pairs, &pair{Key: path, Value: strconv.FormatFloat(valueF64, 'g', -1, 32)})
+		var value64 = int(value)
+		pairs = append(pairs, &pair{Key: path, Value: strconv.Itoa(value64)})
+
 	case float64:
-		pairs = append(pairs, &pair{Key: path, Value: strconv.FormatFloat(value, 'g', -1, 64)})
+		pairs = append(pairs, &pair{Key: path, Value: strconv.FormatFloat(value, 'f', -1, 64)})
+
 	case bool:
 		pairs = append(pairs, &pair{Key: path, Value: strconv.FormatBool(value)})
+
 	case nil:
 		pairs = append(pairs, &pair{Key: path, Value: ""})
+
 	default:
-		pairs = append(pairs, &pair{Key: path, Value: fmt.Sprintf("%v", value)})
+		pairs = append(pairs, &pair{Key: path, Value: value.(string)})
 	}
 
 	return pairs

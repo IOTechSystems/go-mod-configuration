@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2023 IOTech Ltd
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -9,26 +9,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"path"
 	"strconv"
-	"time"
 
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/api"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/dtos"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/models"
-	"github.com/edgexfoundry/go-mod-configuration/v2/internal/pkg/keeper/utils/http"
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
-	"github.com/edgexfoundry/go-mod-messaging/v2/messaging"
-	msgTypes "github.com/edgexfoundry/go-mod-messaging/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/api"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/dtos"
+	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/utils/http"
+	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
+
+	"github.com/edgexfoundry/go-mod-messaging/v3/messaging"
+	msgTypes "github.com/edgexfoundry/go-mod-messaging/v3/pkg/types"
 
 	"github.com/pelletier/go-toml"
 )
 
 const (
-	keeperTopicPrefix            = "edgex/configs"
-	clientID                     = "ClientId"
-	clientIDSuffixRandomInterval = 99999
+	keeperTopicPrefix = "edgex/configs"
 )
 
 type keeperClient struct {
@@ -61,11 +57,7 @@ func (client *keeperClient) createKeeperClient(url string) {
 // IsAlive simply checks if Core Keeper is up and running at the configured URL
 func (client *keeperClient) IsAlive() bool {
 	err := client.keeperClient.Ping()
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // HasConfiguration checks to see if Consul contains the service's configuration.
@@ -149,11 +141,10 @@ func (client *keeperClient) GetConfiguration(configStruct interface{}) (interfac
 	return configStruct, nil
 }
 
-func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string) {
-	// get the service configuration
-	config, err := client.GetConfiguration(&models.ConfigurationStruct{})
-	if err != nil {
-		errorChannel <- err
+func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, errorChannel chan<- error, configuration interface{}, waitKey string, messageBus messaging.MessageClient) {
+	if messageBus == nil {
+		configErr := errors.New("unable to use MessageClient to watch for configuration changes")
+		errorChannel <- configErr
 		return
 	}
 
@@ -165,46 +156,9 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			Messages: messages,
 		},
 	}
-	var msgBusConfig models.MessageBusInfo
-	configStruct, ok := config.(*models.ConfigurationStruct)
-	if !ok {
-		configErr := errors.New("message bus information not defined in the configuration")
-		close(messages)
-		errorChannel <- configErr
-		return
-	}
 
-	msgBusConfig = configStruct.MessageQueue
-	if msgBusConfig.Optional != nil {
-		if clientId, ok := msgBusConfig.Optional[clientID]; ok {
-			// create unique mqtt client id to prevent missing events during subscription
-			randomSuffix := strconv.Itoa(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(clientIDSuffixRandomInterval)) // nolint:gosec
-			msgBusConfig.Optional[clientID] = clientId + "-" + randomSuffix
-		}
-	}
-
-	messageBus, err := messaging.NewMessageClient(msgTypes.MessageBusConfig{
-		SubscribeHost: msgTypes.HostInfo{
-			Host:     msgBusConfig.Host,
-			Port:     msgBusConfig.Port,
-			Protocol: msgBusConfig.Protocol,
-		},
-		Type:     msgBusConfig.Type,
-		Optional: msgBusConfig.Optional,
-	})
-	if err != nil {
-		close(messages)
-		errorChannel <- err
-		return
-	}
-	// connect to the message bus
-	if conErr := messageBus.Connect(); conErr != nil {
-		close(messages)
-		errorChannel <- conErr
-		return
-	}
 	watchErrors := make(chan error)
-	err = messageBus.Subscribe(topics, watchErrors)
+	err := messageBus.Subscribe(topics, watchErrors)
 	if err != nil {
 		_ = messageBus.Disconnect()
 		errorChannel <- err
@@ -216,8 +170,12 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			_ = messageBus.Disconnect()
 		}()
 
-		isFirstUpdate := true
+		// send message to updateChannel once the watcher connection is established
+		// for go-mod-bootstrap to ignore the first change event
+		// refer to https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go#L478-L484
+		updateChannel <- "watch config change subscription established"
 
+	outerLoop:
 		for {
 			select {
 			case <-client.watchingDone:
@@ -225,31 +183,55 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			case e := <-watchErrors:
 				errorChannel <- e
 			case msgEnvelope := <-messages:
-				if isFirstUpdate {
-					// send message to channel once the watcher connection is established
-					// for go-mod-bootstrap to ignore the first change event
-					// refer to https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go#L478-L484
-					isFirstUpdate = false
-					updateChannel <- "watch config change subscription established"
-					continue
-				}
 				if msgEnvelope.ContentType != http.ContentTypeJSON {
 					continue
 				}
-				var respKV dtos.KV
-				err := json.Unmarshal(msgEnvelope.Payload, &respKV)
+				var updatedConfig dtos.KV
+				// unmarshal the updated config to KV DTO
+				err := json.Unmarshal(msgEnvelope.Payload, &updatedConfig)
 				if err != nil {
 					continue
 				}
 				keyPrefix := path.Join(client.configBasePath, waitKey)
-				err = decode(keyPrefix, []dtos.KV{respKV}, configuration)
+
+				// get the whole configs KV DTO array from Keeper with the same keyPrefix
+				kvConfigs, err := client.keeperClient.KV().Get(keyPrefix)
+				if err != nil {
+					continue
+				}
+
+				// if the updated key not equal to keyPrefix, need to check the updated key and value from the message payload are valid
+				// e.g. keyPrefix = "edgex/core/2.0/core-data/Writable" which is the root level of Writable configuration
+				if updatedConfig.Key != keyPrefix {
+					foundUpdatedKey := false
+					for _, c := range kvConfigs.KVs {
+						if c.Key == updatedConfig.Key {
+							// the updated key from the message payload has been found in Keeper
+							foundUpdatedKey = true
+							// if the updated value in the message payload is different from the one obtained by Keeper
+							// skip this subscribed message payload and continue the outer loop
+							if c.Value != updatedConfig.Value {
+								continue outerLoop
+							}
+							break
+						}
+					}
+					// if the updated key from the message payload hasn't been found in Keeper
+					// skip this subscribed message payload
+					if !foundUpdatedKey {
+						continue
+					}
+				}
+
+				// decode KV DTO array to configuration struct
+				err = decode(keyPrefix, kvConfigs.KVs, configuration)
+				if err != nil {
+					continue
+				}
 				updateChannel <- configuration
 			}
 		}
 	}()
-
-	// send empty message to the channel when the watch key change subscription established
-	messages <- msgTypes.MessageEnvelope{}
 }
 
 func (client *keeperClient) StopWatching() {
@@ -270,7 +252,38 @@ func (client *keeperClient) ConfigurationValueExists(name string) (bool, error) 
 
 func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	keyPath := client.fullPath(name)
-	resp, err := client.keeperClient.KV().Get(keyPath)
+	return client.GetConfigurationValueByFullPath(keyPath)
+}
+
+func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
+	keyPath := client.fullPath(name)
+	err := client.keeperClient.KV().Put(keyPath, value)
+	if err != nil {
+		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
+	}
+	return nil
+}
+
+func (client *keeperClient) PutConfigurationMap(configuration map[string]any, overwrite bool) error {
+
+	keyValues := convertInterfaceToPairs("", configuration)
+
+	// Put config properties into Consul.
+	for _, keyValue := range keyValues {
+		exists, _ := client.ConfigurationValueExists(keyValue.Key)
+		if !exists || overwrite {
+			if err := client.PutConfigurationValue(keyValue.Key, []byte(keyValue.Value)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetConfigurationValueByFullPath gets a specific configuration value given the full path from Consul
+func (client *keeperClient) GetConfigurationValueByFullPath(name string) ([]byte, error) {
+	resp, err := client.keeperClient.KV().Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -312,11 +325,6 @@ func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	return []byte(valueStr), nil
 }
 
-func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
-	keyPath := client.fullPath(name)
-	err := client.keeperClient.KV().Put(keyPath, value)
-	if err != nil {
-		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
-	}
-	return nil
+func (client *keeperClient) GetConfigurationKeys(name string) ([]string, error) {
+	return nil, fmt.Errorf("GetConfigurationKeys not implemented")
 }
