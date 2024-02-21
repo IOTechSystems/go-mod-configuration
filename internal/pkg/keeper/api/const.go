@@ -8,8 +8,8 @@ package api
 // key delimiter for edgex keeper
 const KeyDelimiter = "/"
 
-// Constants related to defined routes in the v2 service APIs
-const ApiBase = "/api/v2"
+// Constants related to defined routes in the v3 service APIs
+const ApiBase = "/api/v3"
 const ApiKVRoute = ApiBase + "/kvs/key"
 const ApiPingRoute = ApiBase + "/ping"
 

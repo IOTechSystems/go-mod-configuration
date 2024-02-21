@@ -10,7 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"strconv"
+
+	"github.com/spf13/cast"
 
 	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/api"
 	"github.com/edgexfoundry/go-mod-configuration/v3/internal/pkg/keeper/dtos"
@@ -19,8 +20,6 @@ import (
 
 	"github.com/edgexfoundry/go-mod-messaging/v3/messaging"
 	msgTypes "github.com/edgexfoundry/go-mod-messaging/v3/pkg/types"
-
-	"github.com/pelletier/go-toml"
 )
 
 const (
@@ -60,7 +59,7 @@ func (client *keeperClient) IsAlive() bool {
 	return err == nil
 }
 
-// HasConfiguration checks to see if Consul contains the service's configuration.
+// HasConfiguration checks to see if Core Keeper contains the service's configuration.
 func (client *keeperClient) HasConfiguration() (bool, error) {
 	resp, err := client.keeperClient.KV().Keys(client.configBasePath)
 	if err != nil {
@@ -72,6 +71,7 @@ func (client *keeperClient) HasConfiguration() (bool, error) {
 	return true, nil
 }
 
+// HasSubConfiguration checks to see if the Configuration service contains the service's sub configuration.
 func (client *keeperClient) HasSubConfiguration(name string) (bool, error) {
 	keyPath := client.fullPath(name)
 	resp, err := client.keeperClient.KV().Keys(keyPath)
@@ -84,22 +84,32 @@ func (client *keeperClient) HasSubConfiguration(name string) (bool, error) {
 	return true, nil
 }
 
-// PutConfigurationToml puts a full toml configuration into Core Keeper
-func (client *keeperClient) PutConfigurationToml(configuration *toml.Tree, overwrite bool) error {
-	configurationMap := configuration.ToMap()
-	err := client.PutConfiguration(configurationMap, overwrite)
-	if err != nil {
-		return err
+// PutConfigurationMap puts a full configuration map into Core Keeper.
+// The sub-paths to where the values are to be stored in Core Keeper are generated from the map key.
+func (client *keeperClient) PutConfigurationMap(configuration map[string]any, overwrite bool) error {
+
+	keyValues := convertInterfaceToPairs("", configuration)
+
+	// Put config properties into Core Keeper.
+	for _, keyValue := range keyValues {
+		exists, _ := client.ConfigurationValueExists(keyValue.Key)
+		if !exists || overwrite {
+			if err := client.PutConfigurationValue(keyValue.Key, []byte(keyValue.Value)); err != nil {
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 
+// PutConfiguration puts a full configuration struct into the Configuration provider
 func (client *keeperClient) PutConfiguration(config interface{}, overwrite bool) error {
 	var err error
 	if overwrite {
 		err = client.keeperClient.KV().PutKeys(client.configBasePath, config)
 	} else {
-		kvPairs := convertMapToKVPairs("", config)
+		kvPairs := convertInterfaceToPairs("", config)
 		for _, kv := range kvPairs {
 			exists, err := client.ConfigurationValueExists(kv.Key)
 			if err != nil {
@@ -255,33 +265,7 @@ func (client *keeperClient) GetConfigurationValue(name string) ([]byte, error) {
 	return client.GetConfigurationValueByFullPath(keyPath)
 }
 
-func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
-	keyPath := client.fullPath(name)
-	err := client.keeperClient.KV().Put(keyPath, value)
-	if err != nil {
-		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
-	}
-	return nil
-}
-
-func (client *keeperClient) PutConfigurationMap(configuration map[string]any, overwrite bool) error {
-
-	keyValues := convertInterfaceToPairs("", configuration)
-
-	// Put config properties into Consul.
-	for _, keyValue := range keyValues {
-		exists, _ := client.ConfigurationValueExists(keyValue.Key)
-		if !exists || overwrite {
-			if err := client.PutConfigurationValue(keyValue.Key, []byte(keyValue.Value)); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// GetConfigurationValueByFullPath gets a specific configuration value given the full path from Consul
+// GetConfigurationValueByFullPath gets a specific configuration value given the full path from Core Keeper
 func (client *keeperClient) GetConfigurationValueByFullPath(name string) ([]byte, error) {
 	resp, err := client.keeperClient.KV().Get(name)
 	if err != nil {
@@ -291,40 +275,30 @@ func (client *keeperClient) GetConfigurationValueByFullPath(name string) ([]byte
 		return nil, fmt.Errorf("%s configuration not found", name)
 	}
 
-	var valueStr string
-	switch value := resp.KVs[0].Value.(type) {
-	case string:
-		valueStr = value
-	case int:
-		valueStr = strconv.Itoa(value)
-	case int8:
-		value8 := int(value)
-		valueStr = strconv.Itoa(value8)
-	case int16:
-		value16 := int(value)
-		valueStr = strconv.Itoa(value16)
-	case int32:
-		value32 := int(value)
-		valueStr = strconv.Itoa(value32)
-	case int64:
-		value64 := int(value)
-		valueStr = strconv.Itoa(value64)
-	case float32:
-		valueF64 := float64(value)
-		valueStr = strconv.FormatFloat(valueF64, 'g', -1, 32)
-	case float64:
-		valueStr = strconv.FormatFloat(value, 'g', -1, 64)
-	case bool:
-		valueStr = strconv.FormatBool(value)
-	case nil:
-		valueStr = ""
-	default:
-		valueStr = fmt.Sprintf("%v", value)
-	}
+	valueStr := cast.ToString(resp.KVs[0].Value)
 
 	return []byte(valueStr), nil
 }
 
+func (client *keeperClient) PutConfigurationValue(name string, value []byte) error {
+	keyPath := client.fullPath(name)
+	err := client.keeperClient.KV().Put(keyPath, value)
+	if err != nil {
+		return fmt.Errorf("unable to JSON marshal configStruct, err: %v", err)
+	}
+	return nil
+}
+
 func (client *keeperClient) GetConfigurationKeys(name string) ([]string, error) {
-	return nil, fmt.Errorf("GetConfigurationKeys not implemented")
+	keyPath := client.fullPath(name)
+	resp, err := client.keeperClient.KV().Keys(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get list of keys for %s from Core Keeper: %v", keyPath, err)
+	}
+
+	var list []string
+	for _, v := range resp.Keys {
+		list = append(list, string(v))
+	}
+	return list, nil
 }
