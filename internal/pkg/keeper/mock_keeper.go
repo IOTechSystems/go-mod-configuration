@@ -52,7 +52,7 @@ func (mock *MockCoreKeeper) Start() *httptest.Server {
 				query := request.URL.Query()
 				_, isFlatten := query[api.Flatten]
 				if isFlatten {
-					kvPairs := convertMapToKVPairs(key, addKeysRequest.Value)
+					kvPairs := convertInterfaceToPairs(key, addKeysRequest.Value)
 					for _, kvPair := range kvPairs {
 						mock.updateKVStore(kvPair.Key, kvPair.Value)
 					}

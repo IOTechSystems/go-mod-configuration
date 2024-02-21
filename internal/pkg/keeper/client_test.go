@@ -15,7 +15,6 @@ import (
 
 	"github.com/edgexfoundry/go-mod-configuration/v3/pkg/types"
 
-	"github.com/pelletier/go-toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -170,36 +169,27 @@ func createConfigMap() map[string]interface{} {
 	return configMap
 }
 
-func TestPutConfigurationTomlNoPreValues(t *testing.T) {
+func TestPutConfigurationMapNoPreValues(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
 	// delete the configuration created
 	defer reset(t, client)
 
 	configMap := createConfigMap()
-	configToml, err := toml.TreeFromMap(configMap)
-	if err != nil {
-		t.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-
-	err = client.PutConfigurationToml(configToml, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
 }
 
-func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
+func TestPutConfigurationMapWithoutOverwrite(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
 	// delete the configuration created
 	defer reset(t, client)
 
 	configMap := createConfigMap()
-	configToml, err := toml.TreeFromMap(configMap)
-	if err != nil {
-		t.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-	err = client.PutConfigurationToml(configToml, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -211,12 +201,7 @@ func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
 
 	// overwrite the configMap fields
 	configMap["nestedNode"] = map[string]interface{}{"field1": "overwrite1", "field2": "overwrite2"}
-	configToml, err = toml.TreeFromMap(configMap)
-	if err != nil {
-		t.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-
-	err = client.PutConfigurationToml(configToml, false)
+	err = client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -230,18 +215,14 @@ func TestPutConfigurationTomlWithoutOverwrite(t *testing.T) {
 	}
 }
 
-func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
+func TestPutConfigurationMapWithOverwrite(t *testing.T) {
 	client := makeCoreKeeperClient(getUniqueServiceName())
 
 	// delete the configuration created
 	defer reset(t, client)
 
 	configMap := createConfigMap()
-	configToml, err := toml.TreeFromMap(configMap)
-	if err != nil {
-		t.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-	err = client.PutConfigurationToml(configToml, false)
+	err := client.PutConfigurationMap(configMap, false)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
@@ -253,12 +234,7 @@ func TestPutConfigurationTomlWithOverwrite(t *testing.T) {
 
 	// overwrite the configMap fields
 	configMap["nestedNode"] = map[string]interface{}{"field1": "overwrite1", "field2": "overwrite2"}
-	configToml, err = toml.TreeFromMap(configMap)
-	if err != nil {
-		t.Fatalf("unable to create TOML Tree from map: %v", err)
-	}
-
-	err = client.PutConfigurationToml(configToml, true)
+	err = client.PutConfigurationMap(configMap, true)
 	if !assert.NoError(t, err) {
 		t.Fatal()
 	}
