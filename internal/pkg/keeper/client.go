@@ -180,10 +180,10 @@ func (client *keeperClient) WatchForChanges(updateChannel chan<- interface{}, er
 			_ = messageBus.Disconnect()
 		}()
 
-		// send message to updateChannel once the watcher connection is established
+		// send a nil value to updateChannel once the watcher connection is established
 		// for go-mod-bootstrap to ignore the first change event
-		// refer to https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go#L478-L484
-		updateChannel <- "watch config change subscription established"
+		// refer to the isFirstUpdate variable declared in https://github.com/edgexfoundry/go-mod-bootstrap/blob/main/bootstrap/config/config.go
+		updateChannel <- nil
 
 	outerLoop:
 		for {
