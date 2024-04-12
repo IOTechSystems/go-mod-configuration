@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2024 IOTech Ltd
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -36,6 +36,9 @@ func convertInterfaceToPairs(path string, interfaceMap interface{}) []*pair {
 		for index, item := range value {
 			nextPairs := convertInterfaceToPairs(pathPre+index, item)
 			pairs = append(pairs, nextPairs...)
+		}
+		if len(value) == 0 {
+			pairs = append(pairs, &pair{Key: pathPre + "Placeholder", Value: ""})
 		}
 	default:
 		pairs = append(pairs, &pair{Key: path, Value: cast.ToString(value)})

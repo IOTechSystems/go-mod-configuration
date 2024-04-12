@@ -1,6 +1,6 @@
 //
 // Copyright (c) 2023 Intel Corporation
-// Copyright (C) 2023 IOTech Ltd
+// Copyright (C) 2023-2024 IOTech Ltd
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -438,6 +438,9 @@ func convertInterfaceToConsulPairs(path string, interfaceMap interface{}) []*pai
 		for index, item := range value {
 			nextPairs := convertInterfaceToConsulPairs(pathPre+index, item)
 			pairs = append(pairs, nextPairs...)
+		}
+		if len(value) == 0 {
+			pairs = append(pairs, &pair{Key: pathPre + "Placeholder", Value: ""})
 		}
 
 	case int:
